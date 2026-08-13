@@ -3,8 +3,9 @@
 The events are checked against the OpenLineage spec's own typing rather than
 against what looks reasonable, because "well-formed enough to send" and
 "somewhere a consumer will look" are different bars and only the second one
-matters. See `docs/post-corrections.md` for the one place the published article
-clears the first and not the second.
+matters. `docs/post-corrections.md` § 1 is the place the published article
+cleared the first and not the second — which is what these tests were written to
+catch, and did.
 """
 
 from __future__ import annotations

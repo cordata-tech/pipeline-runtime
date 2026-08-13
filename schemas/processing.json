@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cordata-tech/pipeline-runtime/blob/main/schemas/processing.json",
+  "title": "CordataProcessingJobFacet",
+  "description": "DSGVO Art. 30 fields, declared in the descriptor and travelling outward on the lineage event. A job facet rather than a run facet: purpose and legal basis are properties of the pipeline, not of one execution of it.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "https://openlineage.io/spec/2-0-2/OpenLineage.json#/$defs/JobFacet" },
+    {
+      "type": "object",
+      "properties": {
+        "purpose": {
+          "type": "string",
+          "description": "Why the processing happens, in the domain's own words.",
+          "example": "fraud-detection"
+        },
+        "legal_basis": {
+          "type": "string",
+          "description": "The Art. 6 lawful basis. A closed set rather than a free string, so an invented basis cannot reach the generated processing record.",
+          "enum": [
+            "consent",
+            "contract",
+            "legal-obligation",
+            "vital-interests",
+            "public-task",
+            "legitimate-interest"
+          ]
+        }
+      },
+      "required": ["purpose", "legal_basis"]
+    }
+  ]
+}

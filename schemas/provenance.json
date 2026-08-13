@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cordata-tech/pipeline-runtime/blob/main/schemas/provenance.json",
+  "title": "CordataProvenanceRunFacet",
+  "description": "What was declared, and what authorised it. Emitted as `cordata_provenance` on every run event, terminal or not. The point of the whole block is that an auditor can get from a published number back to the reviewed commit without asking anybody.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "https://openlineage.io/spec/2-0-2/OpenLineage.json#/$defs/RunFacet" },
+    {
+      "type": "object",
+      "properties": {
+        "descriptor_path": {
+          "type": "string",
+          "description": "Path of the descriptor this run executed, relative to the repository root.",
+          "example": "domains/fraud/pipelines/transactions_scored.yml"
+        },
+        "descriptor_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Hash of the descriptor bytes as they were when the run started — not as the file looks today."
+        },
+        "source_table": {
+          "type": "string",
+          "description": "Fully qualified name of the source the run read.",
+          "example": "fraud_raw.transactions"
+        },
+        "source_schema_version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The catalog version the descriptor pinned, and therefore the shape the input actually had."
+        },
+        "descriptor_git_commit": {
+          "type": ["string", "null"],
+          "description": "The commit that last touched the descriptor. Null outside a repository — absence of provenance is not the same as bad provenance, and a consumer reading null knows to ask."
+        },
+        "descriptor_git_commit_signed": {
+          "type": "boolean",
+          "description": "Whether that commit's signature verified against a trusted key (git's `%G?` returning G). A run whose provenance points at an unsigned commit is itself a finding."
+        },
+        "executor_version": {
+          "type": "string",
+          "description": "Name and version of the executor that ran this.",
+          "example": "pipeline-runtime 0.1.0"
+        },
+        "step_params": {
+          "type": "object",
+          "description": "Parameter values substituted into the declared steps, keyed by step id. Where a model version lives, which is usually the most audit-relevant fact about a scoring run.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        }
+      },
+      "required": [
+        "descriptor_path",
+        "descriptor_sha256",
+        "source_table",
+        "source_schema_version",
+        "descriptor_git_commit_signed",
+        "executor_version"
+      ]
+    }
+  ]
+}

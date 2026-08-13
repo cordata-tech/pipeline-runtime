@@ -133,15 +133,16 @@ fails, either the code is wrong or the article is lying — both worth knowing.
   and compares. Skips unless `cordata-platform` is checked out alongside, which
   it will not be for anyone but us
 
-## Where the articles are wrong
+## Where the articles were wrong
 
-Building this turned up five of them, one substantive: part 2 attaches the
+Building this turned up five of them, one substantive: part 2 attached the
 data-quality verdict to a slot the OpenLineage spec does not define it for, so
-no standard consumer would read it. They are documented, with the verification
-for each, in **[docs/post-corrections.md](docs/post-corrections.md)**.
+no standard consumer would have read it. Two are now corrected in the published
+posts and three remain open, all with the verification recorded in
+**[docs/post-corrections.md](docs/post-corrections.md)**.
 
 That file is the most useful thing here. It is also the argument for the repo
-existing: none of those five were visible from reading the drafts.
+existing: none of the five were visible from reading the drafts.
 
 ## What this is not
 
@@ -149,10 +150,6 @@ Not a product, and not a framework to adopt. It is an existence proof at the
 smallest size that proves anything. Deliberately out of scope: real AWS
 deployment, DataZone, MWAA, streaming sources, and anything resembling a
 scheduler.
-
-The productised version of this idea is being planned in the open as
-**Atrium** — see
-[cordata-tech/platform#25](https://github.com/cordata-tech/platform/issues/25).
 
 ## Contributing
 

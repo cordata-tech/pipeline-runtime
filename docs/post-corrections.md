@@ -1,12 +1,20 @@
-# Where this repo and the articles disagree
+# Where this repo and the articles disagreed
 
 Building the runnable version turned up five places where the published posts
-are wrong, incomplete, or would not run as written. They are listed here rather
+were wrong, incomplete, or would not run as written. They are listed here rather
 than quietly fixed in the code, because a reference repo that silently departs
 from the article it references is the thing it exists to prevent.
 
-Each entry says what the article says, what is actually true, how it was
-verified, and what this repo does instead.
+Each entry says what the article said, what is actually true, how it was
+verified, and where it stands now.
+
+| | Article | Status |
+| --- | --- | --- |
+| [1](#1-dataqualityassertions-belongs-on-an-input-not-an-output) | part 2 § 3, § 4 | **fixed 2026-08-13** |
+| [2](#2-partition_object-baseline_fraud_score-will-not-run) | part 1 § 5 | open |
+| [3](#3-the-openlineage-client-already-ships-a-datazone-transport) | part 2 § 2 | **fixed 2026-08-13** |
+| [4](#4-the-trace-shows-expect-before-policy-the-code-resolves-policy-first) | part 1 § 3 | open, cosmetic |
+| [5](#5-dedupe_cdc-reads-as-redundant-next-to-collapse_cdc) | part 1 § 2, § 3 | open, cosmetic |
 
 Verified against `openlineage-python 1.52.0`, `openlineage-integration-common`,
 `great_expectations 1.20.0` and the OpenLineage 2-0-2 spec on 2026-08-13.
@@ -15,9 +23,10 @@ Verified against `openlineage-python 1.52.0`, `openlineage-integration-common`,
 
 ## 1. `dataQualityAssertions` belongs on an input, not an output
 
-**Severity: substantive.** It defeats the purpose of emitting the facet.
+**Severity: substantive.** It defeated the purpose of emitting the facet.
+**Fixed in both language versions on 2026-08-13.**
 
-Part 2 § 3 shows the assertion verdict inside the output dataset:
+Part 2 § 3 showed the assertion verdict inside the output dataset:
 
 ```json
 "outputs": [{
@@ -27,7 +36,7 @@ Part 2 § 3 shows the assertion verdict inside the output dataset:
 }]
 ```
 
-and § 4's `emit()` produces exactly that:
+and § 4's `emit()` produced exactly that:
 
 ```python
 quality = {"dataQualityAssertions": result.as_facet()} if result else {}
@@ -54,30 +63,31 @@ was tested:
 - `openlineage/common/provider/great_expectations/action.py` emits
   `inputs=[dataset(..., input_facets=self.results_facet(...))], outputs=[]`
 
-The event the article emits is still well-formed — OpenLineage facet maps are
-open, so nothing rejects it — which is why this was easy to miss. It simply
-puts the verdict where no standard consumer looks for it, and the verdict being
+The event the article emitted was still well-formed — OpenLineage facet maps are
+open, so nothing rejects it — which is why this was easy to miss. It simply put
+the verdict where no standard consumer looks for it, and the verdict being
 readable by a consumer is the entire reason § 3 emits it.
 
-**What this repo does.** One terminal event per run, exactly as part 1 § 3
+**What both now do.** One terminal event per run, exactly as part 1 § 3
 guarantees, plus a second `OTHER` event on the same `runId` carrying the
 assertions against the tested dataset as an input. `OTHER` because the spec
-reserves it for additional metadata accumulating against a run — which is the
-same accumulation part 2 § 4 already relies on — and because a second
-`COMPLETE` on one `runId` would be illegal.
+reserves it for additional metadata accumulating against a run — the same
+accumulation part 2 § 4 already relied on — and because a second `COMPLETE` on
+one `runId` would be illegal.
+
+The correction also removed a limitation the article had apologised for: a
+blocked publish writes nothing, so it has no output dataset to hang a verdict
+on. Attached to the *tested* dataset the verdict survives, and
+`tests/test_failure_modes.py::test_block_publish_carries_the_verdict_it_died_on`
+holds it there.
 
 See `src/pipeline_runtime/emit.py` and `tests/test_lineage.py`.
-
-**Suggested fix to part 2.** § 3's payload and § 4's `emit()` both need the
-facet moved. The surrounding prose survives unchanged: the argument for
-emitting per-assertion results, and for `severity` mapping onto `on_failure`,
-is unaffected by which slot carries them.
 
 ---
 
 ## 2. `partition_object: baseline_fraud_score` will not run
 
-**Severity: a reader copying the suite hits an error.**
+**Severity: a reader copying the suite hits an error.** Open.
 
 Part 1 § 5's suite reads:
 
@@ -109,30 +119,27 @@ why re-baselining shows up in a diff.
 
 ## 3. The OpenLineage client already ships a DataZone transport
 
-**Severity: an informed reader will notice the omission.**
+**Severity: an informed reader would notice the omission.**
+**Fixed in both language versions on 2026-08-13.**
 
 Part 2 § 2 builds a Lambda adapter that calls `PostLineageEvent`. It never
-mentions that `openlineage-python` ships `AmazonDataZoneTransport`
+mentioned that `openlineage-python` ships `AmazonDataZoneTransport`
 (`openlineage/client/transport/amazon_datazone.py`), which makes the same call.
 
 The adapter is not wasted work — the topology § 2 describes is fan-in from
 producers that are not Python processes (Spark, dbt, Airflow), and a transport
 inside the Python client cannot serve those. But a reader who knows the
-transport exists will wonder why the article had them write one.
+transport exists would wonder why the article had them write one.
 
 Worth noting in the article's favour: the built-in transport passes no
 `clientToken` at all, so § 2's idempotency argument is *stronger* than the
-library's own implementation, not weaker.
-
-**Suggested fix to part 2.** Two sentences in § 2: the transport exists and is
-the right answer for a single Python producer; the adapter is what you need
-when several non-Python producers have to reach one domain.
+library's own implementation, not weaker. The added paragraph says both.
 
 ---
 
 ## 4. The trace shows `expect` before `policy`; the code resolves policy first
 
-**Severity: cosmetic.**
+**Severity: cosmetic.** Open.
 
 Part 1 § 3's sample trace lists `expect` above `policy`. The executor in the
 same section resolves policy at step 3 and validates at step 4 — which is the
@@ -147,6 +154,7 @@ illustrative.
 ## 5. `dedupe_cdc` reads as redundant next to `collapse_cdc`
 
 **Severity: cosmetic, but it invites a "wait, twice?" from a careful reader.**
+Open.
 
 Part 1 § 2's `claims-ingest` descriptor declares a step `dedupe_cdc`, and § 3's
 `read_dms_landing` already collapses the CDC log. Nothing says how the two

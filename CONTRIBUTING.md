@@ -29,9 +29,8 @@ work around.
 
 - **Real AWS deployment.** No DataZone, no MWAA, no Terraform. A reader has to
   be able to run this with no account and no bill.
-- **Making it a product.** The productised version is planned separately as
-  Atrium — [cordata-tech/platform#25](https://github.com/cordata-tech/platform/issues/25).
-  Feature ideas belong there, and they are wanted there.
+- **Making it a product.** Scheduling, a UI, a permission model, a server. This
+  repo stays the size of the argument it exists to check.
 - **New descriptor fields.** Part 1 § 2 rule 3: anything with the same value in
   every descriptor is executor configuration wearing a descriptor's clothes. A
   new field needs a pipeline that genuinely varies in it.

@@ -115,19 +115,18 @@ def test_the_published_descriptors_validate_against_this_repos_model(extracted):
         Descriptor.model_validate(yaml.safe_load(published.read_text()))
 
 
-def test_the_known_divergence_is_still_the_only_one(extracted):
-    """Part 2 § 4 attaches `dataQualityAssertions` to the output dataset.
+def test_the_article_and_the_repo_put_the_verdict_in_the_same_place(extracted):
+    """`dataQualityAssertions` on an input, on a non-terminal event.
 
-    That is wrong — see `docs/post-corrections.md` — and this repo does it
-    differently on purpose. Asserting the divergence keeps it deliberate: if the
-    article is corrected, this fails and the note comes out. If someone
-    "restores fidelity" here, it fails too.
+    This was the one substantive correction building the repo produced: part 2
+    attached the facet to the output dataset, which the spec does not define it
+    for. Guarded in both directions, because a correction only holds if a later
+    edit to either side has to trip over it.
     """
     emit = (PUBLISHED / "emit.py").read_text()
-    assert "outputs = [dataset(pipeline.target, facets=quality)]" in emit, (
-        "part 2 no longer emits assertions on the output dataset — "
-        "if it has been corrected, drop docs/post-corrections.md § 1 and this test"
-    )
+    assert "facets=quality" not in emit, "part 2 has regressed to the output dataset"
+    assert "inputFacets={" in emit and "RunState.OTHER" in emit
 
     ours = (REPO / "src/pipeline_runtime/emit.py").read_text()
     assert 'inputFacets={"dataQualityAssertions"' in ours
+    assert "RunState.OTHER" in ours

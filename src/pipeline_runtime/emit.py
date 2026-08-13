@@ -1,18 +1,15 @@
 """The outbound half — part 2.
 
-One terminal event per run, carrying provenance, the datasets the run actually
-touched, and — when a suite ran — the assertion verdict.
+One terminal event per run, carrying provenance and the datasets the run
+actually touched — plus, when a suite ran, an `OTHER` event on the same run id
+carrying the verdict.
 
-> **Divergence from the published article, deliberate.** Part 2 § 3 and § 4 put
-> `dataQualityAssertions` in the *output* dataset's `facets`. The OpenLineage
-> spec types that facet as an `InputDatasetFacet`, so its only standard home is
-> `InputDataset.inputFacets`, and both reference integrations (dbt and Great
-> Expectations, in `openlineage-integration-common`) emit it that way — against
-> a validation-shaped event whose input is the dataset that was tested.
-> Emitting it where the article does produces a well-formed event whose verdict
-> no standard consumer looks for, which defeats the point of emitting it.
-> `docs/post-corrections.md` has the full working. This module does the
-> spec-correct thing.
+The verdict goes on an *input* rather than the output, because the OpenLineage
+spec types `dataQualityAssertions` as an `InputDatasetFacet`: `inputFacets` is
+its only standard home, and the dataset an assertion refers to is an input *to
+the assertion* whatever it was to the pipeline. Both reference integrations do
+the same. Part 2 said otherwise until this repo was built; see
+`docs/post-corrections.md` § 1 for the working and the fix.
 """
 
 from __future__ import annotations
