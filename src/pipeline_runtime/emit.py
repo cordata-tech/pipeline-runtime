@@ -240,8 +240,8 @@ def emit(
     client.emit(terminal)
     events.append(terminal)
 
-    # 4. The assertion result, when there is one to report (§ 3), against the dataset
-    #    was actually tested. `OTHER` because part 1 § 3 guarantees exactly one
+    # 4. The assertion result, when there is one to report (§ 3), against the
+    #    dataset that was actually tested. `OTHER` because part 1 § 3 guarantees exactly one
     #    *terminal* event per run and this is not it — the spec reserves OTHER
     #    for exactly this, additional metadata accumulating against a runId.
     if result is not None:
