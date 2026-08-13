@@ -11,10 +11,10 @@ verified, and where it stands now.
 | | Article | Status |
 | --- | --- | --- |
 | [1](#1-dataqualityassertions-belongs-on-an-input-not-an-output) | part 2 § 3, § 4 | **fixed 2026-08-13** |
-| [2](#2-partition_object-baseline_fraud_score-will-not-run) | part 1 § 5 | open |
+| [2](#2-partition_object-baseline_fraud_score-will-not-run) | part 1 § 5 | **fixed 2026-08-13** |
 | [3](#3-the-openlineage-client-already-ships-a-datazone-transport) | part 2 § 2 | **fixed 2026-08-13** |
 | [4](#4-the-trace-shows-expect-before-policy-the-code-resolves-policy-first) | part 1 § 3 | open, cosmetic |
-| [5](#5-dedupe_cdc-reads-as-redundant-next-to-collapse_cdc) | part 1 § 2, § 3 | open, cosmetic |
+| [5](#5-dedupe_cdc-reads-as-redundant-next-to-collapse_cdc) | part 1 § 2, § 3 | **fixed 2026-08-13** |
 
 Verified against `openlineage-python 1.52.0`, `openlineage-integration-common`,
 `great_expectations 1.20.0` and the OpenLineage 2-0-2 spec on 2026-08-13.
@@ -87,7 +87,8 @@ See `src/pipeline_runtime/emit.py` and `tests/test_lineage.py`.
 
 ## 2. `partition_object: baseline_fraud_score` will not run
 
-Anyone copying the suite out of the article gets an error. Still open.
+Anyone copying the suite out of the article got an error.
+Corrected in both language versions on 2026-08-13.
 
 Part 1 § 5's suite reads:
 
@@ -111,9 +112,10 @@ published spelling works. That also makes re-baselining a pull request with an
 author on it, which is the behaviour the prose implies — see
 `tools/baseline.py`.
 
-**Planned fix.** A half-sentence after the suite: the platform resolves a named
-baseline from the domain's `baselines/` directory, which is why re-baselining
-shows up in a diff.
+**What the article now says.** A short paragraph after the suite: the name is
+resolved against a `baselines/` directory in the same domain repository, which
+keeps a hundred bin weights out of a file people have to read and makes
+re-baselining a diff with an author on it.
 
 ---
 
@@ -153,7 +155,8 @@ illustrative.
 
 ## 5. `dedupe_cdc` reads as redundant next to `collapse_cdc`
 
-Cosmetic, but it invites a "wait, twice?" from a careful reader. Still open.
+Cosmetic, but it invited a "wait, twice?" from a careful reader.
+Corrected in both language versions on 2026-08-13.
 
 Part 1 § 2's `claims-ingest` descriptor declares a step `dedupe_cdc`, and § 3's
 `read_dms_landing` already collapses the CDC log. Nothing says how the two
@@ -165,5 +168,7 @@ domain's own notion of a duplicate — the same claim submitted twice under two
 ids — which only the policy team can define. This repo implements exactly that
 split, in `example/domains/policy/sql/dedupe_cdc.sql`.
 
-**Planned fix.** One clause where the step is introduced, naming the split. It
-reinforces the ownership argument § 7 makes rather than distracting from it.
+**What the article now says.** A paragraph after `read_dms_landing` naming the
+split: the reader collapses the change log, which is true of every DMS source and
+therefore the platform's; the step drops the domain's own duplicates, which only
+the domain can define. The ownership line in § 7 runs between them.

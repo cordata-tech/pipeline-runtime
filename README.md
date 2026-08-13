@@ -137,9 +137,9 @@ fails, either the code is wrong or the article is lying — both worth knowing.
 
 Building this turned up five of them, one substantive: part 2 attached the
 data-quality result to a slot the OpenLineage spec does not define it for, so
-no standard consumer would have read it. Two are now corrected in the published
-posts and three remain open, all with the verification recorded in
-**[docs/post-corrections.md](docs/post-corrections.md)**.
+no standard consumer would have read it. Four are now corrected in the published
+posts; the fifth is a cosmetic ordering nit. All five, with the verification for
+each, are in **[docs/post-corrections.md](docs/post-corrections.md)**.
 
 That file is the most useful thing here. It is also the argument for the repo
 existing: none of the five were visible from reading the drafts.
