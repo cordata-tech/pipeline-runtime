@@ -23,8 +23,8 @@ Verified against `openlineage-python 1.52.0`, `openlineage-integration-common`,
 
 ## 1. `dataQualityAssertions` belongs on an input, not an output
 
-**Severity: substantive.** It defeated the purpose of emitting the facet.
-**Fixed in both language versions on 2026-08-13.**
+The one that mattered: it defeated the purpose of emitting the facet at all.
+Corrected in both language versions on 2026-08-13.
 
 Part 2 § 3 showed the assertion verdict inside the output dataset:
 
@@ -87,7 +87,7 @@ See `src/pipeline_runtime/emit.py` and `tests/test_lineage.py`.
 
 ## 2. `partition_object: baseline_fraud_score` will not run
 
-**Severity: a reader copying the suite hits an error.** Open.
+Anyone copying the suite out of the article gets an error. Still open.
 
 Part 1 § 5's suite reads:
 
@@ -111,16 +111,16 @@ published spelling works. That also makes re-baselining a pull request with an
 author on it, which is the behaviour the prose implies — see
 `tools/baseline.py`.
 
-**Suggested fix to part 1.** A half-sentence after the suite: the platform
-resolves a named baseline from the domain's `baselines/` directory, which is
-why re-baselining shows up in a diff.
+**Planned fix.** A half-sentence after the suite: the platform resolves a named
+baseline from the domain's `baselines/` directory, which is why re-baselining
+shows up in a diff.
 
 ---
 
 ## 3. The OpenLineage client already ships a DataZone transport
 
-**Severity: an informed reader would notice the omission.**
-**Fixed in both language versions on 2026-08-13.**
+An omission rather than an error, but one an informed reader would notice.
+Corrected in both language versions on 2026-08-13.
 
 Part 2 § 2 builds a Lambda adapter that calls `PostLineageEvent`. It never
 mentioned that `openlineage-python` ships `AmazonDataZoneTransport`
@@ -139,7 +139,7 @@ library's own implementation, not weaker. The added paragraph says both.
 
 ## 4. The trace shows `expect` before `policy`; the code resolves policy first
 
-**Severity: cosmetic.** Open.
+Cosmetic. Still open.
 
 Part 1 § 3's sample trace lists `expect` above `policy`. The executor in the
 same section resolves policy at step 3 and validates at step 4 — which is the
@@ -153,8 +153,7 @@ illustrative.
 
 ## 5. `dedupe_cdc` reads as redundant next to `collapse_cdc`
 
-**Severity: cosmetic, but it invites a "wait, twice?" from a careful reader.**
-Open.
+Cosmetic, but it invites a "wait, twice?" from a careful reader. Still open.
 
 Part 1 § 2's `claims-ingest` descriptor declares a step `dedupe_cdc`, and § 3's
 `read_dms_landing` already collapses the CDC log. Nothing says how the two
@@ -166,6 +165,5 @@ domain's own notion of a duplicate — the same claim submitted twice under two
 ids — which only the policy team can define. This repo implements exactly that
 split, in `example/domains/policy/sql/dedupe_cdc.sql`.
 
-**Suggested fix to part 1.** One clause where the step is introduced, naming
-the split. It reinforces the ownership argument § 7 makes rather than
-distracting from it.
+**Planned fix.** One clause where the step is introduced, naming the split. It
+reinforces the ownership argument § 7 makes rather than distracting from it.
