@@ -1,0 +1,12 @@
+[project]
+name = "cordata-pipeline-runtime"
+version = "0.0.0"
+description = "Runnable reference implementation of the descriptor-driven pipeline executor"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.9", "pyyaml>=6"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

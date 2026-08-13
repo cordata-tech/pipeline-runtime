@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: cordata-pipeline-runtime
+Version: 0.0.0
+Summary: Runnable reference implementation of the descriptor-driven pipeline executor
+Requires-Python: >=3.12
+Requires-Dist: pydantic>=2.9
+Requires-Dist: pyyaml>=6
+Provides-Extra: test
+Requires-Dist: pytest>=8; extra == "test"
