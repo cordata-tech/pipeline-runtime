@@ -66,7 +66,7 @@ def test_assertions_go_where_the_spec_says_they_go(emitted):
     integrations — dbt and Great Expectations, in
     `openlineage-integration-common` — emit it there, against an event whose
     input is the dataset that was tested. Putting it on an output dataset's
-    `facets` produces a well-formed event whose verdict nothing reads.
+    `facets` produces a well-formed event whose assertion results nothing reads.
     """
     assert issubclass(DataQualityAssertionsDatasetFacet, InputDatasetFacet)
 
@@ -77,7 +77,7 @@ def test_assertions_go_where_the_spec_says_they_go(emitted):
         for d in e["inputs"]
         if "dataQualityAssertions" in (d.get("inputFacets") or {})
     ]
-    assert len(carriers) == 1, "the verdict should ride on exactly one dataset"
+    assert len(carriers) == 1, "the result should ride on exactly one dataset"
 
     assert not [
         d

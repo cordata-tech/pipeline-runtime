@@ -118,7 +118,7 @@ def scenario(tmp_path):
 # A suite that cannot pass, whatever the data: the row count is asserted to be
 # in a band no run will ever produce. Failing for a reason unrelated to the
 # fixture's contents is the point — these tests are about what the executor does
-# with a failed verdict, not about which rule produced it.
+# with a failed result, not about which rule produced it.
 IMPOSSIBLE = [{"type": "expect_table_row_count_to_be_between", "kwargs": {"min_value": 10**9}}]
 
 

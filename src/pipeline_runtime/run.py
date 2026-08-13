@@ -102,7 +102,7 @@ def execute(
     tags = policy.resolve(pipeline.contract.lf_tags)
     trace("policy", " ".join(f"{k}={v}" for k, v in tags.items()), "resolved against ontology")
 
-    # 4. the declared expectation suite — rules in, verdict out (§ 5)
+    # 4. the declared expectation suite — rules in, result out (§ 5)
     result: Validation = validate(frame, load_suite(domain_root / pipeline.expectations.suite))
     trace("expect", pipeline.expectations.suite.split("/")[-1].removesuffix(".yml"), result.summary)
 

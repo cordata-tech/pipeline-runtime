@@ -1,9 +1,9 @@
-"""The declared expectation suite — part 1 § 5, and the verdict part 2 § 3 emits.
+"""The declared expectation suite — part 1 § 5, and the result part 2 § 3 emits.
 
 Great Expectations validates a *frame*, not a warehouse, which is the property
 part 1 § 5 reaches for it over dbt tests: the same suite shape works behind any
 reader, at any step, in any pipeline. Its results arrive as structured objects
-rather than log lines, which is what lets one uniform verdict reach `emit()`
+rather than log lines, which is what lets one uniform assertion result reach `emit()`
 regardless of what ran.
 """
 
@@ -33,8 +33,8 @@ class Assertion:
 
 @dataclass(frozen=True)
 class Validation:
-    """The uniform verdict. Every failure path in the executor hands one of these
-    to `emit()`, or `None` if it never got as far as running the suite."""
+    """The uniform assertion result. Every failure path in the executor hands one
+    of these to `emit()`, or `None` if it never got as far as running the suite."""
 
     suite_name: str
     assertions: tuple[Assertion, ...]
@@ -121,7 +121,7 @@ def _resolve_baselines(spec: dict, domain_root: Path) -> dict:
 
 
 def validate(frame: pd.DataFrame, suite: Suite) -> Validation:
-    """Rules in, verdict out.
+    """Rules in, result out.
 
     Runs at the pipeline boundary — after the declared steps, before the write.
     That seam is what makes `on_failure: block_publish` mean something: failing
@@ -141,7 +141,7 @@ def validate(frame: pd.DataFrame, suite: Suite) -> Validation:
         # An expectation that raises — a regex against a numeric column, a
         # partition_object naming a baseline that does not exist — is a failed
         # assertion, not a crashed run. The suite is domain-authored input; bad
-        # input has to produce a verdict the same way bad data does, or a typo
+        # input has to produce a result the same way bad data does, or a typo
         # in the suite silently takes the pipeline down with no event to show
         # for it.
         try:

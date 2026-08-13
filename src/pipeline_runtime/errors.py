@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class PipelineError(Exception):
     """Base for every failure the executor raises, so one boundary catches all."""
 
-    result: Validation | None = None  # most failures have no verdict to report
+    result: Validation | None = None  # most failures have no result to report
 
 
 class UnknownApiVersion(PipelineError):
@@ -45,7 +45,7 @@ class UnknownTagValue(PipelineError):
 class PublishBlocked(PipelineError):
     def __init__(self, name: str, result: Validation) -> None:
         super().__init__(f"{name}: expectations failed before publish")
-        self.result = result  # the one failure that carries a verdict
+        self.result = result  # the one failure that carries an assertion result
 
 
 class UnknownKind(PipelineError):

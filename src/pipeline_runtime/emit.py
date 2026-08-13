@@ -2,9 +2,9 @@
 
 One terminal event per run, carrying provenance and the datasets the run
 actually touched — plus, when a suite ran, an `OTHER` event on the same run id
-carrying the verdict.
+carrying the assertion results.
 
-The verdict goes on an *input* rather than the output, because the OpenLineage
+The assertion results go on an *input* rather than the output, because the OpenLineage
 spec types `dataQualityAssertions` as an `InputDatasetFacet`: `inputFacets` is
 its only standard home, and the dataset an assertion refers to is an input *to
 the assertion* whatever it was to the pipeline. Both reference integrations do
@@ -240,7 +240,7 @@ def emit(
     client.emit(terminal)
     events.append(terminal)
 
-    # 4. The verdict, when there is one to report (§ 3), against the dataset that
+    # 4. The assertion result, when there is one to report (§ 3), against the dataset
     #    was actually tested. `OTHER` because part 1 § 3 guarantees exactly one
     #    *terminal* event per run and this is not it — the spec reserves OTHER
     #    for exactly this, additional metadata accumulating against a runId.

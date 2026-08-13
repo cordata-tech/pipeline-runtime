@@ -115,7 +115,7 @@ def test_the_published_descriptors_validate_against_this_repos_model(extracted):
         Descriptor.model_validate(yaml.safe_load(published.read_text()))
 
 
-def test_the_article_and_the_repo_put_the_verdict_in_the_same_place(extracted):
+def test_the_article_and_the_repo_put_the_result_in_the_same_place(extracted):
     """`dataQualityAssertions` on an input, on a non-terminal event.
 
     This was the one substantive correction building the repo produced: part 2

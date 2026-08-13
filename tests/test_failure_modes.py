@@ -40,11 +40,11 @@ def test_block_publish_writes_nothing_and_still_emits(env, events, scenario):
     assert [e["eventType"] for e in terminal(events())] == ["FAIL"]
 
 
-def test_block_publish_carries_the_verdict_it_died_on(env, events, scenario):
+def test_block_publish_carries_the_result_it_died_on(env, events, scenario):
     """`PublishBlocked` is the one failure that got as far as running the suite.
 
     So its event has both an error *and* assertions. Every other failure has an
-    error and no verdict, which is why `emit` accepts `Validation | None`.
+    error and no result, which is why `emit` accepts `Validation | None`.
     """
     descriptor = scenario(FRAUD, expectations=IMPOSSIBLE)
     with pytest.raises(PublishBlocked):

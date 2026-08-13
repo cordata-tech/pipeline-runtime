@@ -136,7 +136,7 @@ fails, either the code is wrong or the article is lying — both worth knowing.
 ## Where the articles were wrong
 
 Building this turned up five of them, one substantive: part 2 attached the
-data-quality verdict to a slot the OpenLineage spec does not define it for, so
+data-quality result to a slot the OpenLineage spec does not define it for, so
 no standard consumer would have read it. Two are now corrected in the published
 posts and three remain open, all with the verification recorded in
 **[docs/post-corrections.md](docs/post-corrections.md)**.

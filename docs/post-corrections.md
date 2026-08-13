@@ -26,7 +26,7 @@ Verified against `openlineage-python 1.52.0`, `openlineage-integration-common`,
 The one that mattered: it defeated the purpose of emitting the facet at all.
 Corrected in both language versions on 2026-08-13.
 
-Part 2 § 3 showed the assertion verdict inside the output dataset:
+Part 2 § 3 showed the assertion result inside the output dataset:
 
 ```json
 "outputs": [{
@@ -65,7 +65,7 @@ was tested:
 
 The event the article emitted was still well-formed — OpenLineage facet maps are
 open, so nothing rejects it — which is why this was easy to miss. It simply put
-the verdict where no standard consumer looks for it, and the verdict being
+the result where no standard consumer looks for it, and that result being
 readable by a consumer is the entire reason § 3 emits it.
 
 **What both now do.** One terminal event per run, exactly as part 1 § 3
@@ -76,9 +76,9 @@ accumulation part 2 § 4 already relied on — and because a second `COMPLETE` o
 one `runId` would be illegal.
 
 The correction also removed a limitation the article had apologised for: a
-blocked publish writes nothing, so it has no output dataset to hang a verdict
-on. Attached to the *tested* dataset the verdict survives, and
-`tests/test_failure_modes.py::test_block_publish_carries_the_verdict_it_died_on`
+blocked publish writes nothing, so it has no output dataset to hang a result
+on. Attached to the *tested* dataset it survives, and
+`tests/test_failure_modes.py::test_block_publish_carries_the_result_it_died_on`
 holds it there.
 
 See `src/pipeline_runtime/emit.py` and `tests/test_lineage.py`.
