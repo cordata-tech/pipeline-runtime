@@ -26,6 +26,8 @@ class Assertion:
     assertion: str
     success: bool
     column: str | None = None
+    expected: str | None = None
+    actual: str | None = None
     detail: str = ""
 
 
@@ -54,15 +56,23 @@ class Validation:
         return f"{self.passed} passed, {self.failed} failed"
 
     def as_facet(self) -> dqa.DataQualityAssertionsDatasetFacet:
-        """The dataset facet part 2 § 3 attaches to the output.
+        """The facet part 2 § 3 emits, per assertion rather than per suite.
 
-        Per-assertion, not a single pass/fail: an auditor asking *which* rule
-        failed on the 4th of March gets an answer from the event itself rather
-        than from whoever still has the logs.
+        An auditor asking *which* rule failed on the 4th of March gets an answer
+        from the event itself rather than from whoever still has the logs — and
+        `expected`/`actual` are what make a distributional failure legible
+        without going back to the data: 0.19 against a bound of 0.15 says how
+        far the model moved, where a bare `false` says only that it did.
         """
         return dqa.DataQualityAssertionsDatasetFacet(
             assertions=[
-                dqa.Assertion(assertion=a.assertion, success=a.success, column=a.column)
+                dqa.Assertion(
+                    assertion=a.assertion,
+                    success=a.success,
+                    column=a.column,
+                    expected=a.expected,
+                    actual=a.actual,
+                )
                 for a in self.assertions
             ]
         )
@@ -138,14 +148,20 @@ def validate(frame: pd.DataFrame, suite: Suite) -> Validation:
             outcome = batch.validate(expectation)
             success = bool(outcome.success)
             detail = "" if success else _describe(outcome)
+            actual = _observed(outcome)
         except Exception as exc:  # noqa: BLE001 — a broken rule is a failed rule
-            success, detail = False, f"{type(exc).__name__}: {exc}"
+            success, detail, actual = False, f"{type(exc).__name__}: {exc}", None
 
         results.append(
             Assertion(
-                assertion=spec["type"].removeprefix("expect_"),
+                # The suite's own `type:` value, unshortened, so an assertion on
+                # the event traces back to the exact line of the exact suite
+                # that produced it.
+                assertion=spec["type"],
                 success=success,
                 column=spec.get("kwargs", {}).get("column"),
+                expected=_bound(spec),
+                actual=actual,
                 detail=detail,
             )
         )
@@ -163,6 +179,25 @@ def _build(spec: dict):
     if cls is None:
         raise ValueError(f"unknown expectation type in suite: {spec['type']}")
     return cls(**spec.get("kwargs", {}))
+
+
+def _bound(spec: dict) -> str | None:
+    """The threshold the suite declared, as a string, for the facet's `expected`.
+
+    Only the scalar bounds. A `partition_object` is a hundred bin weights and
+    belongs in the baseline file, not on every event that references it.
+    """
+    kwargs = spec.get("kwargs", {})
+    for key in ("threshold", "value", "max_value", "value_set"):
+        if key in kwargs:
+            bounds = [str(kwargs[k]) for k in ("min_value", "max_value") if k in kwargs]
+            return " to ".join(bounds) if bounds else str(kwargs[key])
+    return None
+
+
+def _observed(outcome) -> str | None:
+    value = (outcome.result or {}).get("observed_value")
+    return None if value is None else str(value)
 
 
 def _describe(outcome) -> str:
