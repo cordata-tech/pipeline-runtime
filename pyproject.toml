@@ -1,12 +1,56 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "cordata-pipeline-runtime"
-version = "0.0.0"
+version = "0.1.0"
 description = "Runnable reference implementation of the descriptor-driven pipeline executor"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
-dependencies = ["pydantic>=2.9", "pyyaml>=6"]
+authors = [{ name = "Cordata", email = "hello@cordata.tech" }]
+dependencies = [
+    "pydantic>=2.9",
+    "pyyaml>=6",
+    "duckdb>=1.1",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "pyarrow>=16",
+    "great_expectations>=1.0",
+    "openlineage-python>=1.20",
+]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+pipeline-runtime = "pipeline_runtime.__main__:main"
+
+[project.urls]
+Homepage = "https://cordata.tech"
+"Part 1" = "https://cordata.tech/en/blog/pipelines-as-descriptors"
+"Part 2" = "https://cordata.tech/en/blog/pipeline-half-openlineage-gx"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests", "tools"]
+# Extracted from the published markdown at test time. Linting it would report
+# the article's style, which is not this repo's to change.
+extend-exclude = ["tests/fixtures"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+# UP042 wants `class OnFailure(StrEnum)`. It is right, and `descriptor.py` is
+# the code published in part 1 § 3 — changing it here would make the repo and
+# the article disagree over a detail neither depends on. Worth revisiting only
+# if the article is revised.
+ignore = ["UP042"]

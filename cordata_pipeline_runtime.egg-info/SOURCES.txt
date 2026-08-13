@@ -1,7 +1,0 @@
-pyproject.toml
-cordata_pipeline_runtime.egg-info/PKG-INFO
-cordata_pipeline_runtime.egg-info/SOURCES.txt
-cordata_pipeline_runtime.egg-info/dependency_links.txt
-cordata_pipeline_runtime.egg-info/requires.txt
-cordata_pipeline_runtime.egg-info/top_level.txt
-tests/test_post_conformance.py

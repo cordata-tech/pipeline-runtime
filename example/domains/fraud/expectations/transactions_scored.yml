@@ -1,0 +1,22 @@
+# domains/fraud/expectations/transactions_scored.yml
+#
+# The first three are hygiene, the sort of check a type system would give you
+# for free. The last two are different in kind: distributional drift on the
+# fraud score catches a model regression that every schema test in the world
+# would pass, and row-count boundaries catch upstream deletion bugs before they
+# cascade into a consumer's dashboard.
+#
+# The bounds are scaled to `python -m tools.seed`, not to the production numbers
+# the article quotes. Everything else is the published suite.
+suite_name: transactions_scored
+expectations:
+  - type: expect_column_values_to_not_be_null
+    kwargs: {column: tx_id}
+  - type: expect_column_values_to_be_unique
+    kwargs: {column: tx_id}
+  - type: expect_column_values_to_match_regex
+    kwargs: {column: iban, regex: '^[A-Z]{2}[0-9]{2}[A-Z0-9]{1,30}$'}
+  - type: expect_column_kl_divergence_to_be_less_than
+    kwargs: {column: fraud_score, partition_object: baseline_fraud_score, threshold: 0.15}
+  - type: expect_table_row_count_to_be_between
+    kwargs: {min_value: 32_000, max_value: 40_000}

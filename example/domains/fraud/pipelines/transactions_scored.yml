@@ -1,0 +1,46 @@
+# domains/fraud/pipelines/transactions_scored.yml
+apiVersion: cordata.tech/v1
+kind: TransformPipeline
+
+metadata:
+  name: transactions-scored-daily
+  domain: fraud
+  owner: fraud-data@example.com
+
+source:
+  kind: glue_table
+  database: fraud_raw
+  table: transactions
+  schema_version: 7
+
+steps:
+  - id: filter_settled
+    kind: sql
+    query_file: sql/filter_settled.sql
+  - id: score
+    kind: sql
+    query_file: sql/score.sql
+    params:
+      model_version: "2026-07-fraud-v3"
+
+target:
+  kind: iceberg
+  database: fraud_curated
+  table: transactions_scored
+  partition_by: [scored_date]
+  location: "s3://cordata-fraud-curated-eu-central-1/transactions_scored/"
+
+contract:
+  freshness_sla: PT4H
+  lf_tags:
+    sensitivity: high
+    residency: eu
+    subject_type: customer
+
+expectations:
+  suite: expectations/transactions_scored.yml
+  on_failure: block_publish
+
+processing:                          # flows into the lineage job facet — part 2
+  purpose: fraud-detection
+  legal_basis: legitimate-interest

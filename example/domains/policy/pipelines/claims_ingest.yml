@@ -1,0 +1,41 @@
+# domains/policy/pipelines/claims_ingest.yml
+apiVersion: cordata.tech/v1
+kind: IngestionPipeline
+
+metadata:
+  name: claims-ingest
+  domain: policy
+  owner: policy-data@example.com
+
+source:
+  kind: dms_landing                  # ← different reader
+  database: policy_raw
+  table: claims
+  schema_version: 3
+
+steps:
+  - id: dedupe_cdc                   # ← CDC dedupe, not scoring
+    kind: sql
+    query_file: sql/dedupe_cdc.sql
+
+target:
+  kind: parquet                      # ← different writer
+  database: policy_raw
+  table: claims_deduped
+  partition_by: [ingest_date]
+  location: "s3://cordata-policy-raw-eu-central-1/claims_deduped/"
+
+contract:
+  freshness_sla: PT1H
+  lf_tags:
+    sensitivity: high
+    residency: eu
+    subject_type: customer
+
+expectations:
+  suite: expectations/claims_deduped.yml
+  on_failure: quarantine             # ← quarantine, not block
+
+processing:
+  purpose: claims-processing
+  legal_basis: contract              # ← different Art. 6 basis

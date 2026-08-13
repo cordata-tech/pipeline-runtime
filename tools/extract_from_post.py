@@ -1,14 +1,18 @@
-"""Extract the descriptor model and example descriptors from the published post.
+"""Pull the published code blocks out of the article markdown.
 
-The blog post is the source of truth, not this repo. Rather than hand-copying
-code out of the article — which silently desynchronises the moment either side
-is edited — this script pulls the fenced blocks straight out of the markdown so
-the repo can always be regenerated from whatever the post currently says.
+The posts and this repo are two copies of the same design, and two copies drift.
+Rather than hand-comparing them, this extracts the fenced blocks so
+`tests/test_post_conformance.py` can check the repo against what readers
+actually see.
 
-Usage:
-    python tools/extract_from_post.py [--post PATH] [--out DIR]
+The output is gitignored: a committed copy would be a third source of truth,
+free to drift from both.
 
-Defaults assume cordata-platform is checked out alongside this repo.
+    python tools/extract_from_post.py [--posts DIR] [--out DIR]
+
+Defaults assume cordata-platform is checked out alongside this repo. When it is
+not — which is the normal case for anyone but us, since that repository is
+private — the conformance tests skip rather than fail.
 """
 
 from __future__ import annotations
@@ -18,10 +22,12 @@ import pathlib
 import re
 import sys
 
-DEFAULT_POST = (
-    pathlib.Path(__file__).resolve().parents[2]
-    / "cordata-platform/content/blog/2026-08-10-pipelines-as-descriptors.md"
-)
+SITE = pathlib.Path(__file__).resolve().parents[2] / "cordata-platform"
+DEFAULT_POSTS = SITE / "content/blog"
+POSTS = {
+    "part1": "2026-08-10-pipelines-as-descriptors.md",
+    "part2": "2026-08-12-pipeline-half-openlineage-gx.md",
+}
 
 FENCE = re.compile(r"```(\w+)\n(.*?)```", re.S)
 
@@ -30,44 +36,57 @@ def blocks(md: str, lang: str) -> list[str]:
     return [body for tag, body in FENCE.findall(md) if tag == lang]
 
 
-def extract(post: pathlib.Path, out: pathlib.Path) -> int:
-    if not post.is_file():
-        print(f"post not found: {post}", file=sys.stderr)
+def extract(posts_dir: pathlib.Path, out: pathlib.Path) -> int:
+    missing = [name for name in POSTS.values() if not (posts_dir / name).is_file()]
+    if missing:
+        print(f"not found under {posts_dir}: {', '.join(missing)}", file=sys.stderr)
         return 1
 
-    md = post.read_text()
-    py = blocks(md, "python")
-    yml = blocks(md, "yaml")
+    out.mkdir(parents=True, exist_ok=True)
+    written = 0
+
+    part1 = (posts_dir / POSTS["part1"]).read_text()
+    py = blocks(part1, "python")
 
     model = next((b for b in py if "class Descriptor" in b), None)
     if model is None:
-        print("no block containing `class Descriptor` — did the post change?", file=sys.stderr)
+        print("no block containing `class Descriptor` — did part 1 change?", file=sys.stderr)
         return 1
+    (out / "descriptor_model.py").write_text(model)
+    written += 1
 
-    descriptors = [b for b in yml if "apiVersion:" in b]
+    for label, needle in (("executor", "def execute("), ("errors", "class PipelineError")):
+        if body := next((b for b in py if needle in b), None):
+            (out / f"{label}.py").write_text(body)
+            written += 1
+
+    descriptors = [b for b in blocks(part1, "yaml") if "apiVersion:" in b]
     if not descriptors:
-        print("no descriptor YAML blocks found", file=sys.stderr)
+        print("no descriptor YAML blocks found in part 1", file=sys.stderr)
         return 1
-
-    (out / "fixtures").mkdir(parents=True, exist_ok=True)
-    (out / "fixtures/descriptor_model.py").write_text(model)
     for i, body in enumerate(descriptors, 1):
         name = re.search(r"^\s*name:\s*(\S+)", body, re.M)
-        slug = name.group(1) if name else f"descriptor{i}"
-        (out / f"fixtures/{slug}.yml").write_text(body)
-        print(f"  fixtures/{slug}.yml")
+        (out / f"descriptor-{name.group(1) if name else i}.yml").write_text(body)
+        written += 1
 
-    print(f"  fixtures/descriptor_model.py")
-    print(f"extracted 1 model + {len(descriptors)} descriptors from {post.name}")
+    part2 = (posts_dir / POSTS["part2"]).read_text()
+    if emit := next((b for b in blocks(part2, "python") if "def emit(" in b), None):
+        (out / "emit.py").write_text(emit)
+        written += 1
+
+    print(f"{written} blocks → {out}")
     return 0
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--post", type=pathlib.Path, default=DEFAULT_POST)
-    ap.add_argument("--out", type=pathlib.Path, default=pathlib.Path(__file__).resolve().parents[1] / "tests")
-    args = ap.parse_args()
-    return extract(args.post, args.out)
+    ap.add_argument("--posts", type=pathlib.Path, default=DEFAULT_POSTS)
+    ap.add_argument(
+        "--out",
+        type=pathlib.Path,
+        default=pathlib.Path(__file__).resolve().parents[1] / "tests/fixtures/published",
+    )
+    return extract(*vars(ap.parse_args()).values())
 
 
 if __name__ == "__main__":

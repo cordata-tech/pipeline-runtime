@@ -1,0 +1,13 @@
+{
+  "_comment": [
+    "The LF-tag ontology. In a deployment this lives in the governance account",
+    "and is read with lakeformation.list_lf_tags(); here it is a file. Either",
+    "way it is governance-owned: the executor holds no opinion about what",
+    "'sensitivity: high' permits, and cannot resolve a value nobody defined.",
+    "Adding a value is a governance pull request, not a pipeline change."
+  ],
+  "sensitivity": ["public", "internal", "confidential", "high"],
+  "residency": ["eu", "eea", "global"],
+  "subject_type": ["none", "employee", "customer", "prospect"],
+  "retention": ["30d", "1y", "7y", "10y"]
+}

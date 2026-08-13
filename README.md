@@ -1,73 +1,165 @@
-# cordata-pipeline-runtime
+# pipeline-runtime
 
-Runnable reference implementation of the descriptor-driven pipeline executor
-described in **The pipeline half, part 1 — a pipeline is a descriptor, not a
-program** on [cordata.tech](https://cordata.tech).
+A pipeline is a descriptor, not a program.
 
-> **Status: pre-launch scaffold.** Not yet public, not yet complete. Tracked in
-> [cordata-tech/platform#23](https://github.com/cordata-tech/platform/issues/23),
-> which ships this repo *after* both parts of the post are live.
+This is the runnable version of the executor described in two posts on
+[cordata.tech](https://cordata.tech):
 
-## Why this repo exists
+- **[The pipeline half, part 1 — a pipeline is a descriptor, not a program](https://cordata.tech/en/blog/pipelines-as-descriptors)**
+- **[The pipeline half, part 2 — OpenLineage, Great Expectations, and what governance actually reads](https://cordata.tech/en/blog/pipeline-half-openlineage-gx)**
 
-The post claims a small generic executor can run an arbitrary number of
-pipelines declared as data. A reader has every right to want that claim
-executed rather than described — so this is the version that runs, locally,
-from a clean clone, with no cloud account.
+The posts argue that one small generic executor can run an arbitrary number of
+pipelines declared as data, and that the metadata it emits is what a governance
+layer reads. A reader has every right to want that executed rather than
+described. So: no cloud account, no credentials, two commands.
 
-AWS services are swapped for local equivalents (DuckDB and local Parquet for
-Glue and Spark; a JSON file for the LF-tag ontology). The *shape* is the point;
-the services are not.
+## Five-minute quickstart
 
-## The post is the source of truth
-
-Code is **not** hand-copied out of the article. Hand-copying desynchronises the
-moment either side is edited, and a reference repo that contradicts the post it
-references is worse than no repo. Instead:
+Python **3.12+** (the code uses `match` and PEP 695 `type` aliases).
 
 ```bash
-python tools/extract_from_post.py     # pulls the model + descriptors from the .md
-python -m pytest                      # asserts the published code still holds up
+git clone https://github.com/cordata-tech/pipeline-runtime && cd pipeline-runtime
+python3.12 -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
+
+./.venv/bin/python -m tools.seed                                    # build the local catalog + data
+./.venv/bin/python -m pipeline_runtime example/domains/fraud/pipelines/transactions_scored.yml
 ```
 
-`tools/extract_from_post.py` reads the fenced blocks straight out of
-`cordata-platform/content/blog/2026-08-10-pipelines-as-descriptors.md` (assumed
-checked out alongside this repo) and writes them to `tests/fixtures/`, which is
-gitignored precisely so it can never drift.
+```
+[347b] descriptor  transactions-scored-daily (fraud)      apiVersion v1 OK
+[347b] schema      fraud_raw.transactions                 pinned v7, catalog v7 OK
+[347b] read        glue_table                             50,000 rows
+[347b] step        filter_settled        (sql)            35,919 rows
+[347b] step        score                 (sql)            35,919 rows
+[347b] policy      sensitivity=high residency=eu subject_type=customer  resolved against ontology
+[347b] expect      transactions_scored                    5 passed, 0 failed
+[347b] write       fraud_curated.transactions_scored      iceberg, 1 partition key
+[347b] emit        COMPLETE → lineage adapter             inputs=1 outputs=1
+```
 
-## What the conformance suite checks
-
-Every test corresponds to a claim the article makes in prose. If one fails,
-either the code is wrong or the article is lying — both worth knowing.
-
-- Both published descriptors validate against the published model — no field
-  drift between the YAML in § 2 and the schema in § 3
-- The two descriptors genuinely exercise different readers and writers, which is
-  the *one executor, many descriptors* claim
-- The model rejects all six things the post promises it rejects: a typo'd key,
-  an invented `legal_basis`, a step with both `query_file` and `module`, a step
-  with neither, a `schema_ref` missing its `@vN` pin, a malformed
-  `metadata.name`
-- Descriptor paths stay domain-root relative — a regression guard for a real
-  bug found during review, where the expectation suite resolved one directory
-  too deep
-
-## Requirements
-
-Python **3.12+**. The published model uses PEP 695 `type` aliases (3.12),
-`Self` (3.11), and `match` (3.10).
+Now point the same command at a pipeline in a different domain, with a
+different source technology, a different output format and a different failure
+policy:
 
 ```bash
-python -m venv .venv && ./.venv/bin/pip install -e ".[test]"
+./.venv/bin/python -m pipeline_runtime example/domains/policy/pipelines/claims_ingest.yml
 ```
 
-## Still to build
+Nothing in the executor changed. That is the claim, and it is the only claim
+this repo exists to make checkable.
 
-See [platform#23](https://github.com/cordata-tech/platform/issues/23) for the
-full inventory. In short: the executor loop, the reader/writer/step registries,
-the DuckDB-backed catalog and policy resolvers, and a fixture that reproduces a
-`SchemaDrift` failure.
+The OpenLineage events both runs emitted are in `out/lineage.ndjson`.
+
+## Watch it fail
+
+The interesting path is the failure. Move the source table to v8 while the
+descriptor still pins v7:
+
+```bash
+./.venv/bin/python -m tools.seed --drift
+./.venv/bin/python -m pipeline_runtime example/domains/fraud/pipelines/transactions_scored.yml
+```
+
+```
+[bc11] descriptor  transactions-scored-daily (fraud)      apiVersion v1 OK
+[bc11] schema      fraud_raw.transactions                 pinned v7, catalog v8
+[bc11] FAILED      SchemaDrift:                           fraud_raw.transactions is at v8,
+                   descriptor pins v7. Diff: + merchant_category_code (VARCHAR, nullable).
+                   Bump the pin to v8 to accept.
+```
+
+Nothing was read, nothing was written, nothing was published, and the error
+names the exact column and the exact remedy. A `FAIL` event still reached the
+lineage log carrying the reason — the point being that a supervisor can tell
+"this run died on drift" apart from "nobody scheduled it".
+
+`python -m tools.seed --clean` puts it back to v7.
+
+## What is real and what is local
+
+**Real**, and identical to the articles: the descriptor schema, the executor
+loop, the error hierarchy, the three `on_failure` policies, the terminal-event
+guarantee, the catalog version pin, LF-tag resolution against a
+governance-owned ontology, the Great Expectations suite, and the OpenLineage
+events including the provenance facet.
+
+**Local stand-ins**, swapped inside `src/pipeline_runtime/backends/local.py`:
+
+| The descriptor says | AWS would use | this repo uses |
+| --- | --- | --- |
+| `source.kind: glue_table` | Glue Data Catalog + Spark | a DuckDB table |
+| `source.kind: dms_landing` | DMS CDC files on S3 | Parquet batches with `Op` / `_dms_seq` |
+| `target.kind: iceberg` / `parquet` | Iceberg on S3 | partitioned local Parquet |
+| catalog + version history | `glue.get_table().VersionId` | a `_catalog` schema in DuckDB |
+| LF-tag ontology | `lakeformation.list_lf_tags()` | `example/ontology.json` |
+| lineage transport | HTTP → the § 2 adapter → DataZone | a newline-delimited file |
+
+The descriptors are **unchanged** between the two — byte for byte the ones
+published in part 1 § 2, comments included, which
+`tests/test_post_conformance.py` enforces. That is the substance of part 1 § 2
+rule 1: a descriptor declares intent, not mechanism, so the mechanism can be
+replaced underneath it. Swapping the backend is one entry in
+`CORDATA_BACKEND`.
+
+## Configuration
+
+All of it is executor configuration, none of it is in a descriptor — which is
+part 1 § 2 rule 3 applied to the runtime itself.
+
+| Variable | Default | What it is |
+| --- | --- | --- |
+| `CORDATA_BACKEND` | `local` | which registry set to bind |
+| `CORDATA_CATALOG` | `example/catalog.duckdb` | the metastore |
+| `CORDATA_WAREHOUSE` | `example/warehouse` | where `s3://…` locations land |
+| `CORDATA_ONTOLOGY` | `example/ontology.json` | the LF-tag vocabulary |
+| `CORDATA_LINEAGE_OUT` | `out/lineage.ndjson` | where events are written |
+
+## Tests
+
+```bash
+./.venv/bin/python -m pytest
+```
+
+Every test corresponds to a claim one of the articles makes in prose. If one
+fails, either the code is wrong or the article is lying — both worth knowing.
+
+- `test_descriptor.py` — everything the schema promises to reject
+- `test_executor.py` — both descriptors end to end, one executor
+- `test_failure_modes.py` — `block_publish`, `quarantine`, `warn`, schema
+  drift, and the rule that outranks them: exactly one terminal event per run
+- `test_lineage.py` — the emitted events, checked against the OpenLineage
+  spec's own typing rather than against what looks reasonable
+- `test_post_conformance.py` — extracts the code from the published markdown
+  and compares. Skips unless `cordata-platform` is checked out alongside, which
+  it will not be for anyone but us
+
+## Where the articles are wrong
+
+Building this turned up five of them, one substantive: part 2 attaches the
+data-quality verdict to a slot the OpenLineage spec does not define it for, so
+no standard consumer would read it. They are documented, with the verification
+for each, in **[docs/post-corrections.md](docs/post-corrections.md)**.
+
+That file is the most useful thing here. It is also the argument for the repo
+existing: none of those five were visible from reading the drafts.
+
+## What this is not
+
+Not a product, and not a framework to adopt. It is an existence proof at the
+smallest size that proves anything. Deliberately out of scope: real AWS
+deployment, DataZone, MWAA, streaming sources, and anything resembling a
+scheduler.
+
+The productised version of this idea is being planned in the open as
+**Atrium** — see
+[cordata-tech/platform#25](https://github.com/cordata-tech/platform/issues/25).
+
+## Contributing
+
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md)
+for what is in scope. Corrections to the articles are especially welcome, and
+the five above suggest there are more.
 
 ## Licence
 
-MIT. Issues and pull requests welcome.
+MIT.

@@ -1,0 +1,16 @@
+# domains/policy/expectations/claims_deduped.yml
+#
+# Domain-owned: the policy team is the only party that knows what a claim is
+# supposed to look like. Platform owns the runner.
+suite_name: claims_deduped
+expectations:
+  - type: expect_column_values_to_not_be_null
+    kwargs: {column: claim_id}
+  - type: expect_column_values_to_be_unique
+    kwargs: {column: claim_id}
+  - type: expect_column_values_to_match_regex
+    kwargs: {column: claimant_iban, regex: '^[A-Z]{2}[0-9]{2}[A-Z0-9]{1,30}$'}
+  - type: expect_column_values_to_be_in_set
+    kwargs: {column: status, value_set: [open, settled]}
+  - type: expect_table_row_count_to_be_between
+    kwargs: {min_value: 6_000, max_value: 9_000}

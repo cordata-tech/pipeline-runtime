@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.12 is the floor the published code needs; 3.13 catches the
+        # deprecations that turn into breakage a release later.
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Test
+        run: pytest -q
+
+      - name: The quickstart in the README still works
+        run: |
+          python -m tools.seed --clean
+          python -m pipeline_runtime example/domains/fraud/pipelines/transactions_scored.yml
+          python -m pipeline_runtime example/domains/policy/pipelines/claims_ingest.yml
+          test -s out/lineage.ndjson
+
+      - name: And so does the failure it documents
+        run: |
+          python -m tools.seed --drift
+          ! python -m pipeline_runtime example/domains/fraud/pipelines/transactions_scored.yml

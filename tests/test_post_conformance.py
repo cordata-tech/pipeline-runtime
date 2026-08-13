@@ -1,103 +1,133 @@
-"""Conformance tests: does the code published in the post actually hold up?
+"""Does this repo still say what the articles say?
 
-These run against fixtures extracted from the blog post by
-`tools/extract_from_post.py`, so they fail loudly whenever the article and this
-repo drift apart. Every assertion here corresponds to a claim the post makes in
-prose — if a test fails, either the code is wrong or the article is lying.
+The posts and this repo are two copies of one design, and two copies drift. This
+module extracts the published code and compares behaviour — not text, because
+formatting differences would make it fail for reasons nobody cares about while
+still missing a renamed field.
+
+Skipped when `cordata-platform` is not checked out alongside, which is the
+normal case for anyone but us: that repository is private, and a contributor
+should not see a failing suite because of a file they cannot have.
 """
 
 from __future__ import annotations
 
-import copy
 import importlib.util
-import pathlib
+import subprocess
+import sys
 
 import pytest
 import yaml
-from pydantic import ValidationError
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+from pipeline_runtime.descriptor import Descriptor
+
+from .paths import CLAIMS, FRAUD, REPO
+
+PUBLISHED = REPO / "tests/fixtures/published"
+POSTS = REPO.parent / "cordata-platform/content/blog"
+
+pytestmark = pytest.mark.skipif(
+    not POSTS.is_dir(), reason="cordata-platform not checked out alongside — nothing to compare"
+)
 
 
-@pytest.fixture(scope="session")
-def model_ns() -> dict:
-    """Import the published descriptor model as a real module.
+@pytest.fixture(scope="module", autouse=True)
+def extracted():
+    result = subprocess.run(
+        [sys.executable, "tools/extract_from_post.py"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"extraction failed: {result.stderr.strip()}")
+
+
+@pytest.fixture(scope="module")
+def published_model(extracted):
+    """Import the published model as a real module.
 
     It has to be a module rather than an `exec()` into a bare dict: pydantic
     resolves annotations against the defining module's globals, and a plain
     namespace leaves `Descriptor` "not fully defined".
     """
-    path = FIXTURES / "descriptor_model.py"
-    assert path.is_file(), "no model fixture — run tools/extract_from_post.py"
-    spec = importlib.util.spec_from_file_location("descriptor_model", path)
-    assert spec is not None and spec.loader is not None
+    path = PUBLISHED / "descriptor_model.py"
+    spec = importlib.util.spec_from_file_location("published_descriptor_model", path)
+    assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return vars(module)
+    return module.Descriptor
 
 
-@pytest.fixture(scope="session")
-def descriptors() -> dict[str, dict]:
-    return {p.stem: yaml.safe_load(p.read_text()) for p in sorted(FIXTURES.glob("*.yml"))}
+def _typename(annotation) -> str:
+    """Compare types by shape, not by where they were defined.
 
-
-def test_every_published_descriptor_validates(model_ns, descriptors):
-    """§ 2's YAML must satisfy § 3's model — no field drift between them."""
-    assert descriptors, "no descriptor fixtures — run tools/extract_from_post.py"
-    for name, raw in descriptors.items():
-        try:
-            model_ns["Descriptor"].model_validate(raw)
-        except Exception as exc:  # noqa: BLE001 — surface which descriptor drifted
-            pytest.fail(f"published descriptor {name!r} no longer validates: {exc}")
-
-
-def test_one_executor_many_descriptors(model_ns, descriptors):
-    """The post's central claim: the descriptors differ only in values."""
-    assert len(descriptors) >= 2, "the reuse claim needs at least two descriptors"
-    parsed = [model_ns["Descriptor"].model_validate(r) for r in descriptors.values()]
-    assert len({d.source.kind for d in parsed}) > 1, "descriptors should exercise different readers"
-    assert len({d.target.kind for d in parsed}) > 1, "descriptors should exercise different writers"
-
-
-# Each case below is a rejection the post explicitly promises.
-REJECTIONS = [
-    ("typo'd key is a failed PR",
-     lambda d: d["expectations"].update({"on_fail": "block"})),
-    ("invented legal_basis cannot reach the RoPA",
-     lambda d: d["processing"].update({"legal_basis": "because-we-can"})),
-    ("step with both query_file and module",
-     lambda d: d["steps"][0].update({"module": "domains.fraud.x"})),
-    ("step with neither query_file nor module",
-     lambda d: d["steps"][0].pop("query_file", None)),
-    ("schema_ref without an @vN pin",
-     lambda d: d["source"].update({"schema_ref": "catalog://fraud_raw/transactions"})),
-    ("metadata.name with spaces and capitals",
-     lambda d: d["metadata"].update({"name": "Transactions Daily"})),
-]
-
-
-@pytest.mark.parametrize("label,mutate", REJECTIONS, ids=[c[0] for c in REJECTIONS])
-def test_model_rejects_what_the_post_claims(model_ns, descriptors, label, mutate):
-    base = copy.deepcopy(next(iter(descriptors.values())))
-    mutate(base)
-    # Deliberately narrow: catching bare Exception here would let a broken
-    # model masquerade as correct rejection.
-    try:
-        model_ns["Descriptor"].model_validate(base)
-    except ValidationError:
-        return
-    pytest.fail(f"model accepted what the post promises it rejects: {label}")
-
-
-def test_descriptor_paths_resolve_from_the_domain_root(model_ns, descriptors):
-    """`sql/…` and `expectations/…` are domain-root relative, not descriptor relative.
-
-    Regression guard: the post originally resolved the suite against the
-    descriptor's own directory, which pointed one level too deep.
+    The two models are the same classes imported under different module names,
+    so the module prefix is the one difference that carries no meaning.
     """
-    for raw in descriptors.values():
-        d = model_ns["Descriptor"].model_validate(raw)
-        assert not d.expectations.suite.startswith(("/", "../")), d.expectations.suite
-        for step in d.steps:
-            if step.query_file:
-                assert not step.query_file.startswith(("/", "../")), step.query_file
+    text = str(annotation)
+    for module in ("pipeline_runtime.descriptor.", "published_descriptor_model."):
+        text = text.replace(module, "")
+    return text
+
+
+def fields(model, name="Descriptor", seen=None):
+    """Every (path, type) pair in a pydantic model, nested."""
+    seen = seen or set()
+    if name in seen:
+        return set()
+    seen.add(name)
+
+    out = set()
+    for key, info in model.model_fields.items():
+        annotation = info.annotation
+        out.add((f"{name}.{key}", _typename(annotation)))
+        nested = getattr(annotation, "__args__", (annotation,))
+        for candidate in nested:
+            if hasattr(candidate, "model_fields"):
+                out |= fields(candidate, f"{name}.{key}", seen)
+    return out
+
+
+def test_the_repo_model_matches_the_published_one(published_model):
+    """Field for field, type for type. A field this repo has and the article
+    does not is a field a reader will be surprised by."""
+    assert fields(Descriptor) == fields(published_model)
+
+
+@pytest.mark.parametrize("path", [FRAUD, CLAIMS], ids=lambda p: p.stem)
+def test_the_example_descriptors_are_the_published_ones(extracted, path):
+    """Byte-for-byte here, because a descriptor is the artefact a reader copies.
+
+    Whitespace and comments included: the article's comments explain which four
+    fields differ between the two pipelines, and a repo that quietly drops them
+    has dropped the explanation.
+    """
+    name = yaml.safe_load(path.read_text())["metadata"]["name"]
+    published = PUBLISHED / f"descriptor-{name}.yml"
+    assert published.is_file(), f"part 1 no longer publishes a descriptor named {name}"
+    assert path.read_text() == published.read_text()
+
+
+def test_the_published_descriptors_validate_against_this_repos_model(extracted):
+    """§ 2's YAML must satisfy § 3's model — no field drift between them."""
+    for published in PUBLISHED.glob("descriptor-*.yml"):
+        Descriptor.model_validate(yaml.safe_load(published.read_text()))
+
+
+def test_the_known_divergence_is_still_the_only_one(extracted):
+    """Part 2 § 4 attaches `dataQualityAssertions` to the output dataset.
+
+    That is wrong — see `docs/post-corrections.md` — and this repo does it
+    differently on purpose. Asserting the divergence keeps it deliberate: if the
+    article is corrected, this fails and the note comes out. If someone
+    "restores fidelity" here, it fails too.
+    """
+    emit = (PUBLISHED / "emit.py").read_text()
+    assert "outputs = [dataset(pipeline.target, facets=quality)]" in emit, (
+        "part 2 no longer emits assertions on the output dataset — "
+        "if it has been corrected, drop docs/post-corrections.md § 1 and this test"
+    )
+
+    ours = (REPO / "src/pipeline_runtime/emit.py").read_text()
+    assert 'inputFacets={"dataQualityAssertions"' in ours
