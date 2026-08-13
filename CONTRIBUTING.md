@@ -67,9 +67,35 @@ python3.12 -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 CI runs exactly those. `test_post_conformance.py` skips in CI, because it needs
 the site repository, which is private.
 
-## Commits
+## How a change gets in
 
-Signed commits are appreciated but not required. We sign ours because part 2 § 4
-publishes `descriptor_git_commit_signed` on every lineage event and calls an
-unsigned commit a finding, which would be a strange thing to publish and not
-do.
+Fork, branch, open a pull request. That is the only route — `main` takes no
+direct pushes from anyone but the maintainer — and it needs no special access,
+so there is nothing to ask for before you start.
+
+## Commits, and the one bit of friction
+
+`main` requires **signed commits**. Not hygiene theatre: part 2 § 4 publishes
+`descriptor_git_commit_signed` on every lineage event and calls a run whose
+provenance points at an unsigned commit a finding. Publishing that and not doing
+it would be a strange position to hold.
+
+Signing is a one-time setup and worth having anyway —
+[GitHub's guide](https://docs.github.com/en/authentication/managing-commit-signature-verification)
+covers SSH signing, which needs no GPG keyring:
+
+```bash
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/id_ed25519.pub
+git config --global commit.gpgsign true
+```
+
+Then add the same public key to your GitHub account a second time, as a
+**signing** key — authentication keys and signing keys are separate lists, and
+an auth key alone will not verify.
+
+**If you would rather not, send the pull request anyway.** The rule is on the
+branch, not on you: unsigned work gets landed with `git commit --author=` so the
+commit keeps your name and email in the log and in `git shortlog`, with a
+maintainer signature on top. You lose nothing but the green *Verified* badge.
+Nobody's correction is going to be turned away over a git config.
