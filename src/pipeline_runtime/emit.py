@@ -55,9 +55,10 @@ def _client() -> OpenLineageClient:
     """Where events go is deployment configuration, not pipeline configuration.
 
     A file by default so a clean clone can read what it emitted. In a deployment
-    this is the HTTP transport pointed at the adapter from part 2 § 2 — or
-    `AmazonDataZoneTransport`, which the client ships and which calls the same
-    `PostLineageEvent` API by hand.
+    this is the HTTP transport pointed at the adapter from part 2 § 2, or
+    `AmazonDataZoneTransport`, which the client ships. Both are reachable by
+    configuration alone:
+    https://openlineage.io/docs/client/python/configuration/
     """
     target = Path(os.environ.get("CORDATA_LINEAGE_OUT", "out/lineage.ndjson"))
     target.parent.mkdir(parents=True, exist_ok=True)
