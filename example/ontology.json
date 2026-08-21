@@ -4,10 +4,16 @@
     "and is read with lakeformation.list_lf_tags(); here it is a file. Either",
     "way it is governance-owned: the executor holds no opinion about what",
     "'sensitivity: high' permits, and cannot resolve a value nobody defined.",
-    "Adding a value is a governance pull request, not a pipeline change."
+    "Adding a value is a governance pull request, not a pipeline change.",
+    "",
+    "This file mirrors the Terraform in fabric-mesh-on-aws § 3 and is not an",
+    "independent definition. It must not drift: a key the executor accepts but",
+    "Terraform never created cannot be applied to LakeFormation at all, so the",
+    "run passes policy.resolve() and then fails at the AWS API."
   ],
+  "domain": ["fraud", "policy", "claims", "marketing", "finance"],
   "sensitivity": ["public", "internal", "confidential", "high"],
-  "residency": ["eu", "eea", "global"],
+  "residency": ["eu", "ch", "us", "global"],
   "subject_type": ["none", "employee", "customer", "prospect"],
   "retention": ["30d", "1y", "7y", "10y"]
 }
