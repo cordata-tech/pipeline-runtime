@@ -130,9 +130,10 @@ ad-hoc SQL, notebooks, BI tools — are not on it, and no check here can see the
 so does a column that was not null becoming nullable, because a pipeline
 written against the pinned version can rely on each of those. An added column
 does not: `example/proposals/card-ledger-v4.12.0.yml` exits 0 and lists both
-pipelines as `BUMP`. They still stop at their next run with `SchemaDrift` until their pins
-move, as part 1 § 4 intends, but a pipeline cannot pin a version before the
-version exists, so failing the producer's build on it would block every change.
+pipelines as `BUMP`. They still stop at their next run with `SchemaDrift` until
+their pins move, as part 1 § 4 intends, but a pipeline cannot pin a version
+before the version exists, so failing the producer's build on it would block
+every change.
 A descriptor that reads the table but does not parse, or that pins a version
 the catalog does not have, also fails the check, since either hides what that
 consumer depends on.
