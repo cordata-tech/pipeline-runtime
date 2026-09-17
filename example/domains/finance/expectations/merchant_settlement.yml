@@ -1,0 +1,14 @@
+# domains/finance/expectations/merchant_settlement.yml
+#
+# The bounds are scaled to `python -m tools.seed`, which produces 26,581
+# merchant-days.
+suite_name: merchant_settlement
+expectations:
+  - type: expect_column_values_to_not_be_null
+    kwargs: {column: merchant_id}
+  - type: expect_compound_columns_to_be_unique
+    kwargs: {column_list: [merchant_id, settlement_date]}
+  - type: expect_column_values_to_be_between
+    kwargs: {column: amount_eur, min_value: 0}
+  - type: expect_table_row_count_to_be_between
+    kwargs: {min_value: 23_000, max_value: 30_000}

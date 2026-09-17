@@ -48,6 +48,15 @@ policy:
 Nothing in the executor changed. That is the claim, and it is the only claim
 this repo exists to make checkable.
 
+A third pipeline, `example/domains/finance/pipelines/merchant_settlement.yml`,
+is not from the articles. It is written against `cordata.tech/v2`, which names
+both contracts a pipeline has: `source.contract` pins the schema version it
+reads, and `target.contract` holds what it promises downstream. v1 keeps
+the output contract in a top-level `contract:` block and leaves the input side
+unnamed. v2 is registered beside v1 rather than replacing it, so the two
+published descriptors run unchanged; the reasoning is on
+[#1](https://github.com/cordata-tech/pipeline-runtime/issues/1).
+
 The OpenLineage events both runs emitted are in `out/lineage.ndjson`.
 
 ## Watch it fail

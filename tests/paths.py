@@ -10,3 +10,6 @@ ONTOLOGY = EXAMPLE / "ontology.json"
 
 FRAUD = EXAMPLE / "domains/fraud/pipelines/transactions_scored.yml"
 CLAIMS = EXAMPLE / "domains/policy/pipelines/claims_ingest.yml"
+
+# Not published in part 1, and written against cordata.tech/v2.
+FINANCE = EXAMPLE / "domains/finance/pipelines/merchant_settlement.yml"

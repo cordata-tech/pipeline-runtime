@@ -1,8 +1,10 @@
 """The claim: one generic executor, an arbitrary number of pipelines as data.
 
-Both descriptors here are the ones published in part 1 § 2, byte for byte. They
-differ in four values — `source.kind`, `target.kind`, `expectations.on_failure`,
-`processing.legal_basis` — and nothing in the executor changes to run either.
+The first two descriptors here are the ones published in part 1 § 2, byte for
+byte. They differ in four values — `source.kind`, `target.kind`,
+`expectations.on_failure`, `processing.legal_basis` — and nothing in the executor
+changes to run either. The third is written against `cordata.tech/v2` and runs
+through the same executor.
 """
 
 from __future__ import annotations
@@ -15,9 +17,9 @@ import pytest
 from pipeline_runtime import catalog
 from pipeline_runtime.backends.local import local_path
 from pipeline_runtime.run import load, run
-from tests.paths import CLAIMS, FRAUD
+from tests.paths import CLAIMS, FINANCE, FRAUD
 
-DESCRIPTORS = [FRAUD, CLAIMS]
+DESCRIPTORS = [FRAUD, CLAIMS, FINANCE]
 
 
 @pytest.mark.parametrize("descriptor", DESCRIPTORS, ids=lambda p: p.stem)

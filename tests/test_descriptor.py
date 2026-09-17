@@ -45,7 +45,7 @@ REJECTIONS = [
         lambda d: d["metadata"].update({"name": "Tx Daily"}),
     ),
     ("no steps at all", lambda d: d.update({"steps": []})),
-    ("an apiVersion nobody registered", lambda d: d.update({"apiVersion": "cordata.tech/v2"})),
+    ("another apiVersion's descriptor", lambda d: d.update({"apiVersion": "cordata.tech/v2"})),
     ("a kind nobody registered", lambda d: d.update({"kind": "StreamingPipeline"})),
 ]
 
