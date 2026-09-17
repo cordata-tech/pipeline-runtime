@@ -1,4 +1,4 @@
-"""Build the local catalog and the source data both example pipelines read.
+"""Build the local catalog and the source data the example pipelines read.
 
 Everything this writes is reproducible and gitignored — a clean clone runs this
 first and then runs the pipelines. Deterministic by construction (fixed seed),
@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from pipeline_runtime import catalog  # noqa: E402
 from pipeline_runtime.backends.local import warehouse  # noqa: E402
+from pipeline_runtime.descriptor import TableRef  # noqa: E402
 
 SEED = 20260812
 EPOCH = datetime(2026, 7, 1)
@@ -51,6 +52,17 @@ CLAIMS_V3 = [
     ("reported_at", "TIMESTAMP", False, False),
     ("status", "VARCHAR", False, False),
 ]
+
+# Who publishes each source table, and from which release. In a deployment the
+# application's own release pipeline sets these when it updates the Glue table;
+# here the seed plays both applications.
+TRANSACTIONS = TableRef(database="fraud_raw", table="transactions")
+TRANSACTIONS_PRODUCER = "card-ledger"
+TRANSACTIONS_RELEASES = {7: "v4.11.0", 8: "v4.12.0"}
+
+CLAIMS = TableRef(database="policy_raw", table="claims")
+CLAIMS_PRODUCER = "claims-portal"
+CLAIMS_RELEASES = {3: "v2.3.0"}
 
 
 def ibans(rng: np.random.Generator, n: int) -> np.ndarray:
@@ -120,17 +132,27 @@ def claims_cdc(rng: np.random.Generator, n_claims: int) -> pd.DataFrame:
     return frame.sample(frac=1.0, random_state=SEED + 2).reset_index(drop=True)
 
 
-def register(con, database: str, table: str, columns: list[tuple], version: int) -> None:
-    con.execute(
-        'DELETE FROM _catalog.tables WHERE database = ? AND "table" = ? AND version = ?',
-        [database, table, version],
-    )
-    con.executemany(
-        "INSERT INTO _catalog.tables VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-            (database, table, version, name, typ, nullable, pk, i)
-            for i, (name, typ, nullable, pk) in enumerate(columns)
-        ],
+def forget(con, ref: TableRef) -> None:
+    """Drop the seed's own history for a table, so a re-run starts it again.
+
+    `catalog.publish` never rewrites a version, which is right for a catalog
+    and wrong for a fixture that `--drift` re-runs on top of.
+    """
+    for table in ("tables", "versions"):
+        con.execute(
+            f'DELETE FROM _catalog.{table} WHERE database = ? AND "table" = ?',
+            [ref.database, ref.table],
+        )
+
+
+def publish(con, ref: TableRef, columns: list[tuple], version: int, producer: str, release: str):
+    catalog.publish(
+        con,
+        ref,
+        version,
+        [catalog.Column(n, t, nullable, pk) for n, t, nullable, pk in columns],
+        producer=producer,
+        release=release,
     )
 
 
@@ -161,8 +183,12 @@ def main(argv: list[str] | None = None) -> int:
         con.register("_tx", tx)
         con.execute("CREATE OR REPLACE TABLE fraud_raw.transactions AS SELECT * FROM _tx")
 
-        register(con, "fraud_raw", "transactions", TRANSACTIONS_V7, version=7)
-        register(con, "policy_raw", "claims", CLAIMS_V3, version=3)
+        forget(con, TRANSACTIONS)
+        forget(con, CLAIMS)
+        publish(
+            con, TRANSACTIONS, TRANSACTIONS_V7, 7, TRANSACTIONS_PRODUCER, TRANSACTIONS_RELEASES[7]
+        )
+        publish(con, CLAIMS, CLAIMS_V3, 3, CLAIMS_PRODUCER, CLAIMS_RELEASES[3])
 
         if args.drift:
             # The column exists in the catalog *and* in the data, because that
@@ -175,7 +201,14 @@ def main(argv: list[str] | None = None) -> int:
                 "UPDATE fraud_raw.transactions SET merchant_category_code = "
                 "printf('%04d', abs(hash(merchant_id)) % 10000)"
             )
-            register(con, "fraud_raw", "transactions", TRANSACTIONS_V8, version=8)
+            publish(
+                con,
+                TRANSACTIONS,
+                TRANSACTIONS_V8,
+                8,
+                TRANSACTIONS_PRODUCER,
+                TRANSACTIONS_RELEASES[8],
+            )
 
     landing = warehouse() / "landing" / "policy_raw" / "claims"
     shutil.rmtree(landing, ignore_errors=True)
@@ -189,7 +222,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"fraud_raw.transactions   {len(tx):,} rows at v{8 if args.drift else 7}")
     print(f"policy_raw.claims        {len(cdc):,} CDC rows in 4 batches under {landing}")
     if args.drift:
-        print("\nfraud_raw.transactions is now at v8; the descriptor pins v7.")
+        print(
+            f"\nfraud_raw.transactions is now at v8, published by {TRANSACTIONS_PRODUCER} "
+            f"release {TRANSACTIONS_RELEASES[8]}; the descriptors pin v7."
+        )
     return 0
 
 

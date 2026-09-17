@@ -14,6 +14,7 @@ backend-independent, which is the point.
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,7 +37,13 @@ def catalog_path() -> Path:
     return Path(os.environ.get("CORDATA_CATALOG", "example/catalog.duckdb"))
 
 
-# One version row per table, mirroring Glue's linear table-definition history.
+# `tables` holds one row per column per version, mirroring Glue's linear
+# table-definition history. `versions` holds one row per version saying who
+# published it: the Glue equivalent is keys a publishing job sets in
+# `TableInput.Parameters` on `UpdateTable`, which Glue archives with each
+# `TableVersion`. Whether `UpdateTable` keeps keys a job leaves out is untested
+# (#1), so nothing here carries a value forward from an earlier version — see
+# `publish`.
 METASTORE_DDL = """
 CREATE SCHEMA IF NOT EXISTS _catalog;
 CREATE TABLE IF NOT EXISTS _catalog.tables (
@@ -49,6 +56,14 @@ CREATE TABLE IF NOT EXISTS _catalog.tables (
     primary_key   BOOLEAN NOT NULL DEFAULT FALSE,
     ordinal       INTEGER NOT NULL,
     PRIMARY KEY (database, "table", version, column_name)
+);
+CREATE TABLE IF NOT EXISTS _catalog.versions (
+    database  VARCHAR NOT NULL,
+    "table"   VARCHAR NOT NULL,
+    version   INTEGER NOT NULL,
+    producer  VARCHAR NOT NULL,
+    release   VARCHAR NOT NULL,
+    PRIMARY KEY (database, "table", version)
 );
 CREATE TABLE IF NOT EXISTS _catalog.lf_tags (
     database  VARCHAR NOT NULL,
@@ -183,11 +198,58 @@ def resolve(source: Source) -> Schema:
             raise SchemaDrift(
                 f"{source.fqn} is at v{version}, descriptor pins "
                 f"v{source.schema_version}. "
+                f"{published_since(con, source, source.schema_version)}"
                 f"Diff: {diff_columns(con, source, version)}. "
                 f"Bump the pin to v{version} to accept.",
                 found=version,
             )
         return Schema.from_catalog(_rows(con, source, version))
+
+
+def columns_at(con: duckdb.DuckDBPyConnection, ref: TableRef, version: int) -> tuple[Column, ...]:
+    return tuple(Column(n, t, bool(nul), bool(pk)) for _, n, t, nul, pk in _rows(con, ref, version))
+
+
+@dataclass(frozen=True)
+class Change:
+    """One column-level difference between two versions of a table."""
+
+    text: str
+    # Whether a reader written against the older version stops working: a column
+    # it projects is gone or retyped, or a column it may assume is filled can
+    # now be null. An added column, or a nullable one tightened to not null,
+    # leaves such a reader correct.
+    breaking: bool
+
+    def __str__(self) -> str:
+        return self.text
+
+
+def changes(older: Sequence[Column], newer: Sequence[Column]) -> list[Change]:
+    before = {c.name: c for c in older}
+    after = {c.name: c for c in newer}
+    both = [n for n in after if n in before]
+
+    out = [Change(f"+ {after[n]}", breaking=False) for n in after if n not in before]
+    out += [Change(f"- {before[n]}", breaking=True) for n in before if n not in after]
+    out += [
+        Change(f"~ {n}: {before[n].type} -> {after[n].type}", breaking=True)
+        for n in both
+        if before[n].type != after[n].type
+    ]
+    out += [
+        Change(
+            f"~ {n}: {_nullability(before[n])} -> {_nullability(after[n])}",
+            breaking=after[n].nullable,
+        )
+        for n in both
+        if before[n].nullable != after[n].nullable
+    ]
+    return out
+
+
+def _nullability(column: Column) -> str:
+    return "nullable" if column.nullable else "not null"
 
 
 def diff_columns(con: duckdb.DuckDBPyConnection, source: Source, version: int) -> str:
@@ -198,19 +260,120 @@ def diff_columns(con: duckdb.DuckDBPyConnection, source: Source, version: int) -
     the run stopped. Naming the columns is what turns "it broke" into "the
     upstream team added a merchant category code".
     """
-    pinned = {
-        c[1]: Column(c[1], c[2], bool(c[3])) for c in _rows(con, source, source.schema_version)
-    }
-    current = {c[1]: Column(c[1], c[2], bool(c[3])) for c in _rows(con, source, version)}
+    found = changes(
+        columns_at(con, source, source.schema_version), columns_at(con, source, version)
+    )
+    return ", ".join(map(str, found)) or "no column changes — the version moved on its own"
 
-    parts = [f"+ {current[n]}" for n in current if n not in pinned]
-    parts += [f"- {pinned[n]}" for n in pinned if n not in current]
-    parts += [
-        f"~ {n}: {pinned[n].type} -> {current[n].type}"
-        for n in current
-        if n in pinned and pinned[n].type != current[n].type
-    ]
-    return ", ".join(parts) or "no column changes — the version moved on its own"
+
+# ---------------------------------------------------------------- who published a version
+
+
+@dataclass(frozen=True)
+class Publication:
+    version: int
+    producer: str | None  # None when the version carries no attribution
+    release: str | None
+
+    @property
+    def by(self) -> str:
+        if self.producer is None:
+            return "an unrecorded producer"
+        return f"{self.producer} release {self.release}"
+
+    def __str__(self) -> str:
+        return f"v{self.version} by {self.by}"
+
+
+def publications(
+    con: duckdb.DuckDBPyConnection, ref: TableRef, after: int, upto: int
+) -> list[Publication]:
+    """Every version in (after, upto] the catalog holds, with whoever published it.
+
+    A version with no attribution is reported as such rather than skipped. In
+    Glue that is the normal case for a version written by a crawler or by a job
+    that set no parameters, and leaving it out would pin a change on the wrong
+    release.
+    """
+    found = con.execute(
+        """
+        SELECT DISTINCT t.version, v.producer, v.release
+          FROM _catalog.tables t
+          LEFT JOIN _catalog.versions v USING (database, "table", version)
+         WHERE t.database = ? AND t."table" = ? AND t.version > ? AND t.version <= ?
+         ORDER BY t.version
+        """,
+        [ref.database, ref.table, after, upto],
+    ).fetchall()
+    return [Publication(v, producer, release) for v, producer, release in found]
+
+
+def published_since(con: duckdb.DuckDBPyConnection, ref: TableRef, pinned: int) -> str:
+    """The sentence naming the releases between a pin and the catalog, or nothing.
+
+    Every version after the pin is named, not only the latest: the diff is
+    cumulative, so any of those releases may be the one that removed the column.
+    """
+    found = publications(con, ref, after=pinned, upto=current_version(con, ref))
+    match found:
+        case []:
+            return ""
+        case [one]:
+            return f"v{one.version} was published by {one.by}. "
+        case _:
+            return f"Published since v{pinned}: {', '.join(map(str, found))}. "
+
+
+def publish(
+    con: duckdb.DuckDBPyConnection,
+    ref: TableRef,
+    version: int,
+    columns: Sequence[Column],
+    *,
+    producer: str,
+    release: str,
+) -> None:
+    """Publish a new version of a source table, attributed to the release that made it.
+
+    This is the producer's side of the contract: what an application's release
+    pipeline does when it ships a schema change. In Glue it is `UpdateTable`
+    with the producer and release set in `TableInput.Parameters`.
+
+    Both are required on every call and nothing is copied from the version
+    before. Whether Glue's `UpdateTable` replaces `Parameters` wholesale is
+    untested (#1), so a publishing job has to write the full set each time, and
+    a local catalog that quietly carried an earlier release forward would
+    model something the real one may not do.
+
+    Versions only move forward, as in Glue's version history. An existing
+    version is never rewritten, because a pin on it is a claim about its shape.
+    """
+    if not producer.strip() or not release.strip():
+        raise ValueError(f"{ref.fqn} v{version}: producer and release are both required")
+    latest = con.execute(
+        'SELECT max(version) FROM _catalog.tables WHERE database = ? AND "table" = ?',
+        [ref.database, ref.table],
+    ).fetchone()[0]
+    if latest is not None and version <= latest:
+        raise ValueError(f"{ref.fqn} is already at v{latest}; a published version is not rewritten")
+
+    con.begin()
+    try:
+        con.executemany(
+            "INSERT INTO _catalog.tables VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (ref.database, ref.table, version, c.name, c.type, c.nullable, c.primary_key, i)
+                for i, c in enumerate(columns)
+            ],
+        )
+        con.execute(
+            "INSERT INTO _catalog.versions VALUES (?, ?, ?, ?, ?)",
+            [ref.database, ref.table, version, producer, release],
+        )
+        con.commit()
+    except BaseException:
+        con.rollback()
+        raise
 
 
 def register(ref: TableRef, schema: Schema, tags: dict[str, str]) -> None:
@@ -220,6 +383,10 @@ def register(ref: TableRef, schema: Schema, tags: dict[str, str]) -> None:
     pipeline was executed against. That only holds if publishing the data and
     publishing its contract are the same act, so the writer calls this rather
     than leaving it to a separate crawler that may or may not have run.
+
+    Unlike `publish`, this records no producer: the writer contract from part 1
+    § 3 passes a target and tags, not the pipeline that wrote them. A pipeline's
+    own output therefore reads as unrecorded to anything that pins it.
     """
     with connect() as con:
         con.execute(

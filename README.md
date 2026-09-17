@@ -73,13 +73,17 @@ descriptor still pins v7:
 [bc11] descriptor  transactions-scored-daily (fraud)      apiVersion v1 OK
 [bc11] schema      fraud_raw.transactions                 pinned v7, catalog v8
 [bc11] FAILED      SchemaDrift:                           fraud_raw.transactions is at v8,
-                   descriptor pins v7. Diff: + merchant_category_code (VARCHAR, nullable).
+                   descriptor pins v7. v8 was published by card-ledger release v4.12.0.
+                   Diff: + merchant_category_code (VARCHAR, nullable).
                    Bump the pin to v8 to accept.
 ```
 
 Nothing was read, nothing was written, nothing was published, and the error
-names the exact column and the exact remedy. A `FAIL` event still reached the
-lineage log carrying the reason — the point being that a supervisor can tell
+names the exact column, the release that changed it, and the exact remedy. The
+release comes from the catalog: every source-table version is published with a
+producer and a release reference (`catalog.publish`), so the person reading the
+failure knows which team to ask without having to go and find out. A `FAIL`
+event still reached the lineage log carrying the reason — the point being that a supervisor can tell
 "this run died on drift" apart from "nobody scheduled it".
 
 `python -m tools.seed --clean` puts it back to v7.
@@ -100,11 +104,20 @@ events including the provenance facet.
 | `source.kind: dms_landing` | DMS CDC files on S3 | Parquet batches with `Op` / `_dms_seq` |
 | `target.kind: iceberg` / `parquet` | Iceberg on S3 | partitioned local Parquet |
 | catalog + version history | `glue.get_table().VersionId` | a `_catalog` schema in DuckDB |
+| producer and release per version | keys in `TableInput.Parameters` on `UpdateTable`, archived with each `TableVersion` | `_catalog.versions` |
 | LF-tag ontology | `lakeformation.list_lf_tags()` | `example/ontology.json` |
 | lineage transport | HTTP → the § 2 adapter → DataZone | a newline-delimited file |
 
-The descriptors are **unchanged** between the two — byte for byte the ones
-published in part 1 § 2, comments included, which
+The producer row is checked against the AWS API reference and has not been run
+against Glue. `UpdateTable` archives a new version by default and each
+`TableVersion` carries its `Parameters`; whether `UpdateTable` replaces
+`Parameters` wholesale, dropping keys a job leaves out, is untested
+([#1](https://github.com/cordata-tech/pipeline-runtime/issues/1)). So
+`catalog.publish` requires both values on every call and copies nothing from the
+version before, which is the behaviour a publishing job has to assume.
+
+The descriptors are **unchanged** between the two — fraud and claims byte for
+byte the ones published in part 1 § 2, comments included, which
 `tests/test_post_conformance.py` enforces. That is the substance of part 1 § 2
 rule 1: a descriptor declares intent, not mechanism, so the mechanism can be
 replaced underneath it. Swapping the backend is one entry in

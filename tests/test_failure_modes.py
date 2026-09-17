@@ -104,6 +104,7 @@ def test_schema_drift_fails_before_reading_anything(seeded, monkeypatch, tmp_pat
     message = str(exc.value)
     assert "is at v8" in message and "pins v7" in message
     assert "merchant_category_code" in message, "the diff has to name the column"
+    assert "v8 was published by card-ledger release v4.12.0" in message, "and the release"
     assert "Bump the pin" in message, "and the remedy"
 
 
