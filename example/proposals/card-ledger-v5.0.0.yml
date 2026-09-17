@@ -1,0 +1,17 @@
+# What card-ledger v5.0.0 would publish for fraud_raw.transactions: merchant_id
+# renamed to merchant_ref. An ordinary refactor inside the application, and a
+# removed column to every pipeline that pins the table.
+#
+#   python -m pipeline_runtime.consumers example/proposals/card-ledger-v5.0.0.yml example/domains
+table: fraud_raw.transactions
+producer: card-ledger
+release: v5.0.0
+columns:
+  - {name: tx_id, type: VARCHAR, nullable: false, primary_key: true}
+  - {name: account_id, type: VARCHAR, nullable: false}
+  - {name: iban, type: VARCHAR, nullable: false}
+  - {name: amount_eur, type: DOUBLE, nullable: false}
+  - {name: currency, type: VARCHAR, nullable: false}
+  - {name: status, type: VARCHAR, nullable: false}
+  - {name: booked_at, type: TIMESTAMP, nullable: false}
+  - {name: merchant_ref, type: VARCHAR, nullable: false}

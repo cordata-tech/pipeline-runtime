@@ -83,10 +83,67 @@ names the exact column, the release that changed it, and the exact remedy. The
 release comes from the catalog: every source-table version is published with a
 producer and a release reference (`catalog.publish`), so the person reading the
 failure knows which team to ask without having to go and find out. A `FAIL`
-event still reached the lineage log carrying the reason — the point being that a supervisor can tell
-"this run died on drift" apart from "nobody scheduled it".
+event still reached the lineage log carrying the reason — the point being that a
+supervisor can tell "this run died on drift" apart from "nobody scheduled it".
 
 `python -m tools.seed --clean` puts it back to v7.
+
+## Catch it in the producer's build instead
+
+`SchemaDrift` fires when a pipeline runs, which is after the application release
+that changed the table has shipped. The same check can run the other way round,
+in the application's CI: given the version it is about to publish, which
+pipelines would it break?
+
+```bash
+./.venv/bin/python -m pipeline_runtime.consumers example/proposals/card-ledger-v5.0.0.yml example/domains
+```
+
+```
+card-ledger release v5.0.0 proposes fraud_raw.transactions v8; the catalog is at v7
+2 descriptors under example/domains read fraud_raw.transactions
+
+BREAKS      merchant-settlement-daily (finance)  pins v7  owner finance-data@example.com
+            example/domains/finance/pipelines/merchant_settlement.yml
+            + merchant_ref (VARCHAR, not null)
+            - merchant_id (VARCHAR, not null)   <- breaks
+
+BREAKS      transactions-scored-daily (fraud)  pins v7  owner fraud-data@example.com
+            example/domains/fraud/pipelines/transactions_scored.yml
+            + merchant_ref (VARCHAR, not null)
+            - merchant_id (VARCHAR, not null)   <- breaks
+
+2 of 2 consumers fail this check
+```
+
+The exit status is 1, which is what fails the build. The proposal is a YAML file
+holding the table, the producer, the release and the columns it would publish.
+
+**The list of consumers is not maintained anywhere.** It is every descriptor
+under the given paths whose source reads the table, so it comes from the same
+pins the pipelines run on and cannot fall behind them; a pipeline added
+tomorrow is on it as soon as its descriptor is merged. An organisation with
+several repositories passes several checkouts. Readers that declare nothing —
+ad-hoc SQL, notebooks, BI tools — are not on it, and no check here can see them.
+
+**Not every change fails the build.** A removed or retyped column fails it, and
+so does a column that was not null becoming nullable, because a pipeline
+written against the pinned version can rely on each of those. An added column
+does not: `example/proposals/card-ledger-v4.12.0.yml` exits 0 and lists both
+pipelines as `BUMP`. They still stop at their next run with `SchemaDrift` until their pins
+move, as part 1 § 4 intends, but a pipeline cannot pin a version before the
+version exists, so failing the producer's build on it would block every change.
+A descriptor that reads the table but does not parse, or that pins a version
+the catalog does not have, also fails the check, since either hides what that
+consumer depends on.
+
+**Existing tools.** The [Data Contract
+CLI](https://github.com/datacontract/datacontract-cli)'s `breaking` command
+already runs a producer-side compatibility check in CI, against a contract
+document. This command's difference is where the list of consumers comes from:
+the pins in the descriptors that read the table, not a document someone keeps
+up to date. It checks shape only — columns, types and nullability — and
+nothing about meaning, which a version check cannot see.
 
 ## What is real and what is local
 
@@ -142,11 +199,20 @@ part 1 § 2 rule 3 applied to the runtime itself.
 ./.venv/bin/python -m pytest
 ```
 
-Every test corresponds to a claim one of the articles makes in prose. If one
-fails, either the code is wrong or the article is lying — both worth knowing.
+Every test corresponds to a claim one of the articles, or
+[#1](https://github.com/cordata-tech/pipeline-runtime/issues/1), makes in
+prose. If one fails, either the code is wrong or the claim is — both worth
+knowing.
 
 - `test_descriptor.py` — everything the schema promises to reject
-- `test_executor.py` — both descriptors end to end, one executor
+- `test_descriptor_v2.py` — v2 names both contracts and moves nothing else, so
+  a migrated descriptor runs exactly as the v1 one did
+- `test_executor.py` — all three descriptors end to end, one executor
+- `test_catalog.py` — every version carries its producer and release, nothing
+  is carried forward between versions, and the drift message names each
+  release since the pin
+- `test_consumers.py` — the producer-side check: consumers found from the
+  pins, and the exit status a CI job reads
 - `test_failure_modes.py` — `block_publish`, `quarantine`, `warn`, schema
   drift, and the rule that outranks them: exactly one terminal event per run
 - `test_lineage.py` — the emitted events, checked against the OpenLineage
