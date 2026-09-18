@@ -2,7 +2,9 @@
 
 Runs that published writing quotes. Each was captured from a real run, and the file records one run rather than being regenerated; a later run prints a different run id.
 
-The first two were captured on 2026-09-17 at commit `48ca993` by `tools/capture_evidence.py`, which refuses to run on a dirty working tree, so the commit a file names is the code that produced its output. They are for `cordata-tech/platform#49` § 13 to quote, as the captured-run acceptance item on [#1](https://github.com/cordata-tech/pipeline-runtime/issues/1) asks. The third answers that issue's Glue question and needs an AWS account, so it was run by hand.
+Three of them come from `tools/capture_evidence.py`, which refuses to run on a dirty working tree, so the commit a file names is the code that produced its output: the two failures on 2026-09-17 at commit `48ca993`, and the successful run on 2026-09-18 at `aa00291`, after [#2](https://github.com/cordata-tech/pipeline-runtime/issues/2) put the producing release on the event. They are for `cordata-tech/platform#49` § 13 to quote, as the captured-run acceptance item on [#1](https://github.com/cordata-tech/pipeline-runtime/issues/1) asks. The Glue transcript answers #1's other question, needs an AWS account, and so was run by hand.
+
+Capturing a file replaces it, which is why `capture_evidence` takes the names of the transcripts to capture: re-running the lot would give the already-quoted files new run ids and a later commit for nothing.
 
 ## `schema-drift-names-the-release.md`
 
@@ -21,6 +23,12 @@ The release here comes from the local catalog. On AWS the same values would be k
 The producer side, with the catalog at v7. card-ledger release v5.0.0 proposes renaming `merchant_id` to `merchant_ref`. `python -m pipeline_runtime.consumers` scans `example/domains`, finds the two descriptors whose source is `fraud_raw.transactions` — fraud's `transactions-scored-daily`, a v1 descriptor, and finance's `merchant-settlement-daily`, a v2 one — and reports both as broken by the removed column, with their owners. It exits 1, which is what fails an application's build.
 
 The second run in the same file is the contrast. Release v4.12.0 only adds a column, so the check exits 0 and lists both pipelines as needing their pins moved to v8. `tests/test_consumers.py` asserts the verdicts, the exit statuses and which descriptors are on the list, but not the wording.
+
+## `provenance-names-the-release.md`
+
+The same chain on a run that works, which is where it matters: a failure is loud, and a success is the case where a wrong number could go out quietly. The catalog is at v7 and the descriptor pins v7, so nothing fails, and the `cordata_provenance` facet on the COMPLETE event still carries `source_published_by: card-ledger` and `source_published_release: v4.11.0` beside the descriptor commit and its signature. The run id on the facet is the one in the trace above it.
+
+`descriptor_git_commit_signed` reaches the reviewed commit that authorised the pipeline; the two `source_published_*` fields reach the application release that gave the input its shape. Together they are the chain [#1](https://github.com/cordata-tech/pipeline-runtime/issues/1) opened by pointing out that a number could be fully evidenced and still wrong. `tests/test_lineage.py` asserts the fields on a successful run, their absence when the catalog records no producer, and their absence on a run that read nothing.
 
 ## `glue-updatetable-parameters.md`
 
