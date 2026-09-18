@@ -41,9 +41,9 @@ def catalog_path() -> Path:
 # table-definition history. `versions` holds one row per version saying who
 # published it: the Glue equivalent is keys a publishing job sets in
 # `TableInput.Parameters` on `UpdateTable`, which Glue archives with each
-# `TableVersion`. Whether `UpdateTable` keeps keys a job leaves out is untested
-# (#1), so nothing here carries a value forward from an earlier version — see
-# `publish`.
+# `TableVersion`. `UpdateTable` replaces `Parameters` wholesale — measured
+# against Glue, see `docs/evidence/glue-updatetable-parameters.md` — so nothing
+# here carries a value forward from an earlier version either. See `publish`.
 METASTORE_DDL = """
 CREATE SCHEMA IF NOT EXISTS _catalog;
 CREATE TABLE IF NOT EXISTS _catalog.tables (
@@ -340,10 +340,11 @@ def publish(
     with the producer and release set in `TableInput.Parameters`.
 
     Both are required on every call and nothing is copied from the version
-    before. Whether Glue's `UpdateTable` replaces `Parameters` wholesale is
-    untested (#1), so a publishing job has to write the full set each time, and
-    a local catalog that quietly carried an earlier release forward would
-    model something the real one may not do.
+    before, because Glue behaves the same way: `UpdateTable` replaces
+    `Parameters` wholesale, dropping every key the job left out
+    (`docs/evidence/glue-updatetable-parameters.md`). A publishing job has to
+    write the full set each time, and a local catalog that quietly carried an
+    earlier release forward would model something the real one does not do.
 
     Versions only move forward, as in Glue's version history. An existing
     version is never rewritten, because a pin on it is a claim about its shape.

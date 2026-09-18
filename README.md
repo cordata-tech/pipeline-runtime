@@ -166,13 +166,14 @@ events including the provenance facet.
 | LF-tag ontology | `lakeformation.list_lf_tags()` | `example/ontology.json` |
 | lineage transport | HTTP → the § 2 adapter → DataZone | a newline-delimited file |
 
-The producer row is checked against the AWS API reference and has not been run
-against Glue. `UpdateTable` archives a new version by default and each
-`TableVersion` carries its `Parameters`; whether `UpdateTable` replaces
-`Parameters` wholesale, dropping keys a job leaves out, is untested
-([#1](https://github.com/cordata-tech/pipeline-runtime/issues/1)). So
-`catalog.publish` requires both values on every call and copies nothing from the
-version before, which is the behaviour a publishing job has to assume.
+The producer row was measured against Glue rather than read off the API
+reference: `UpdateTable` archives a new version by default, each `TableVersion`
+keeps the `Parameters` it was written with, and an update replaces `Parameters`
+wholesale, so every key the job leaves out is dropped. The transcript is in
+[docs/evidence/glue-updatetable-parameters.md](docs/evidence/glue-updatetable-parameters.md).
+`catalog.publish` therefore requires both values on every call and copies
+nothing from the version before, which is what a publishing job against Glue has
+to do.
 
 The descriptors are **unchanged** between the two — fraud and claims byte for
 byte the ones published in part 1 § 2, comments included, which

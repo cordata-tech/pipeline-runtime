@@ -59,8 +59,9 @@ def test_a_published_version_is_never_rewritten(con):
 def test_nothing_is_carried_forward_from_the_version_before(con):
     """The local model of a publishing job that writes the full set every time.
 
-    Whether Glue's `UpdateTable` keeps parameters a job omits is untested, so
-    each version's attribution here is exactly what its own publish wrote.
+    Glue's `UpdateTable` drops every parameter a job omits
+    (`docs/evidence/glue-updatetable-parameters.md`), so each version's
+    attribution here is exactly what its own publish wrote.
     """
     catalog.publish(con, REF, 1, V1, producer="orders-api", release="v1.0.0")
     catalog.publish(con, REF, 2, V1, producer="checkout", release="2026.09.1")
