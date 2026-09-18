@@ -1,6 +1,11 @@
 """Capture the runs that published writing quotes, into docs/evidence/.
 
-    python -m tools.capture_evidence
+    python -m tools.capture_evidence                      # all of them
+    python -m tools.capture_evidence provenance-names-the-release.md
+
+Naming files captures only those, which is the usual case: each file records
+one run, so re-capturing the others would replace transcripts that are already
+quoted, with new run ids and a later commit, for no reason.
 
 Refuses to run on a dirty working tree, so the commit named in each file is the
 code that produced its output. Each command runs from the repository root
@@ -40,6 +45,20 @@ TRANSCRIPTS = {
             f"{PY} -m pipeline_runtime example/domains/fraud/pipelines/transactions_scored.yml",
         ],
     ),
+    "provenance-names-the-release.md": (
+        "Transcript: a successful run carrying the release behind its input",
+        "The chain, on a run that worked. `fraud_raw.transactions` is at v7, published by "
+        "card-ledger release v4.11.0, and the pipeline pins v7 — so nothing fails, and the "
+        "event it emits still says which application release gave the input its shape. "
+        "`descriptor_git_commit_signed` reaches the reviewed commit that authorised the "
+        "pipeline; `source_published_by` and `source_published_release` reach the change "
+        "upstream of it.",
+        [
+            f"{PY} -m tools.seed --clean",
+            f"{PY} -m pipeline_runtime example/domains/fraud/pipelines/transactions_scored.yml",
+            f"{PY} -m tools.show_provenance",
+        ],
+    ),
     "consumers-breaking-change.md": (
         "Transcript: the producer-side check failing on a breaking change",
         "The producer side. The catalog is at v7. card-ledger release v5.0.0 proposes "
@@ -77,7 +96,13 @@ def run(command: str) -> tuple[str, int]:
     return result.stdout, result.returncode
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if unknown := [name for name in argv if name not in TRANSCRIPTS]:
+        print(f"no such transcript: {unknown}; have {sorted(TRANSCRIPTS)}", file=sys.stderr)
+        return 2
+    wanted = {name: TRANSCRIPTS[name] for name in argv} if argv else TRANSCRIPTS
+
     if dirty := git("status", "--porcelain"):
         print(f"refusing to capture on a dirty working tree:\n{dirty}", file=sys.stderr)
         return 1
@@ -85,7 +110,7 @@ def main() -> int:
     commit = git("rev-parse", "--short=7", "HEAD")
     OUT.mkdir(parents=True, exist_ok=True)
 
-    for name, (title, intro, commands) in TRANSCRIPTS.items():
+    for name, (title, intro, commands) in wanted.items():
         lines = [
             f"# {title}",
             "",
