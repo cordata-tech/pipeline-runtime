@@ -187,6 +187,14 @@ wholesale, so every key the job leaves out is dropped. The transcript is in
 nothing from the version before, which is what a publishing job against Glue has
 to do.
 
+The catalog row has a sharper caveat, measured the same way in
+[docs/evidence/glue-iceberg-commit.md](docs/evidence/glue-iceberg-commit.md). A
+schema change committed through Iceberg keeps those keys, but `pyiceberg` asks
+Glue not to archive the version it replaces, so two commits after a descriptor
+pinned a version, that version is no longer in the catalog to resolve. This
+repo's `_catalog` keeps every version, which matches Glue only when
+`glue.skip-archive=false` is set on the engine writing the table.
+
 The descriptors are **unchanged** between the two — fraud and claims byte for
 byte the ones published in part 1 § 2, comments included, which
 `tests/test_post_conformance.py` enforces. That is the substance of part 1 § 2

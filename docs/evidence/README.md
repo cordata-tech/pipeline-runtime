@@ -34,4 +34,10 @@ The same chain on a run that works, which is where it matters: a failure is loud
 
 Whether the attribution the local catalog keeps in `_catalog.versions` has a carrier in the real one. Run against a live Glue Data Catalog on 2026-09-18 by `tools/glue_probe.py`, which creates a throwaway database, writes three table versions and deletes the database again.
 
-`UpdateTable` replaces a table's `Parameters` wholesale: a key the job leaves out is dropped, and each archived `TableVersion` keeps what it was written with. `catalog.publish` is built for exactly that — both values required on every call, nothing carried forward — so the local catalog and Glue agree. What a crawler run or an Iceberg commit does to those keys is still open.
+`UpdateTable` replaces a table's `Parameters` wholesale: a key the job leaves out is dropped, and each archived `TableVersion` keeps what it was written with. `catalog.publish` is built for exactly that — both values required on every call, nothing carried forward — so the local catalog and Glue agree.
+
+## `glue-iceberg-commit.md`
+
+The same question asked of the write path the published descriptors actually name, `target.kind: iceberg`, run on 2026-09-30. An Iceberg commit keeps `cordata:producer` and `cordata:release`, because the engine reads the current parameters and sends the whole map back. What it discards is the Glue version that carried them: `pyiceberg` passes `SkipArchive=True` by default, so two commits after a pin was written the version that pin names is gone from the catalog, and `glue.skip-archive=false` is what restores it.
+
+That inverts what [#4](https://github.com/cordata-tech/pipeline-runtime/issues/4) expected, and moves the risk from attribution to the pin itself. The local catalog keeps every version, so it models Glue with archiving on, and a deployment pointing descriptors at Iceberg tables has to make the real catalog match. A crawler run is still untested.
