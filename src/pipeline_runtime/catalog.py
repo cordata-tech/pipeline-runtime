@@ -388,6 +388,25 @@ def publish(
         raise
 
 
+def tags_for(ref: TableRef) -> dict[str, str]:
+    """The classification the catalog holds for a table, empty when it holds none.
+
+    Written by `register` when a pipeline publishes its output, so a table that
+    is another pipeline's product answers here and one an application publishes
+    usually does not. The caller reports what this returns rather than what any
+    descriptor declared about it: a reader's own `contract.lf_tags` describe
+    what it publishes, never what it read.
+    """
+    with connect(read_only=True) as con:
+        return dict(
+            con.execute(
+                "SELECT tag_key, tag_value FROM _catalog.lf_tags "
+                'WHERE database = ? AND "table" = ? ORDER BY tag_key',
+                [ref.database, ref.table],
+            ).fetchall()
+        )
+
+
 def register(ref: TableRef, schema: Schema, tags: dict[str, str]) -> None:
     """Publish the output's shape and its tags, from the one declaration.
 

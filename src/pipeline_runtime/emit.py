@@ -34,6 +34,7 @@ from openlineage.client.event_v2 import (
     set_producer,
 )
 from openlineage.client.facet_v2 import JobFacet, RunFacet, error_message_run, schema_dataset
+from openlineage.client.generated import tags_dataset
 from openlineage.client.transport.file import FileConfig, FileTransport
 
 from . import __version__
@@ -166,19 +167,41 @@ def _git_provenance(path: Path) -> tuple[str | None, bool]:
     return out[0], out[1] == "G"
 
 
-def dataset(ref: TableRef, domain: str, columns: Sequence[Any] | None = None, **kwargs: Any) -> Any:
-    """One dataset reference, carrying its schema when the run knows it.
+# Named on every tag this runtime emits, so a consumer can tell a classification
+# resolved against the governance ontology from one a crawler guessed.
+TAG_SOURCE = "CORDATA_PIPELINE_RUNTIME"
+
+
+def dataset(
+    ref: TableRef,
+    domain: str,
+    columns: Sequence[Any] | None = None,
+    tags: dict[str, str] | None = None,
+    **kwargs: Any,
+) -> Any:
+    """One dataset reference, carrying its schema and classification when the run knows them.
 
     The namespace is the domain rather than the storage account: under
     account-per-domain the same physical bucket can be reached by several
     identities, and lineage that keyed on the reacher would split one dataset
     into several. The domain is the thing that stays the same.
+
+    `TagsDatasetFacet` is a plain `DatasetFacet`, so unlike the quality facet in
+    `docs/post-corrections.md` § 1 it belongs in `facets` and is defined for an
+    input and an output alike.
     """
     cls = kwargs.pop("cls", OutputDataset)
     facets = dict(kwargs.pop("facets", {}))
     if columns:
         facets["schema"] = schema_dataset.SchemaDatasetFacet(
             fields=[schema_dataset.SchemaDatasetFacetFields(name=n, type=t) for n, t in columns]
+        )
+    if tags:
+        facets["tags"] = tags_dataset.TagsDatasetFacet(
+            tags=[
+                tags_dataset.TagsDatasetFacetFields(key=k, value=v, source=TAG_SOURCE)
+                for k, v in sorted(tags.items())
+            ]
         )
     return cls(namespace=f"cordata://{domain}", name=ref.fqn, facets=facets, **kwargs)
 
@@ -197,6 +220,8 @@ def emit(
     source_columns: Sequence[tuple[str, str]] | None = None,
     target_columns: Sequence[tuple[str, str]] | None = None,
     source_publication: Publication | None = None,
+    tags: dict[str, str] | None = None,
+    source_tags: dict[str, str] | None = None,
 ) -> list[RunEvent]:
     """Emit the run's terminal event, plus the assertion event when a suite ran.
 
@@ -208,6 +233,14 @@ def emit(
     `source_publication` is the release that published the version the run
     read, and it is absent on a run that read nothing — a run that died on
     drift touched no version, so claiming one on its event would be a guess.
+
+    The two tag arguments come from different authorities on purpose, which is
+    the decision recorded on #3. `tags` are the contract's own, resolved against
+    the governance ontology and applied by the writer, so they describe what
+    this run published. `source_tags` are whatever the catalog already holds for
+    the table this run read, because the classification of someone else's table
+    is not this descriptor's to assert — and it is absent when the catalog holds
+    none.
 
     Returns what was emitted so tests can assert on it — the executor itself
     ignores the return value.
@@ -242,11 +275,19 @@ def emit(
         case "FAIL":
             inputs, outputs = [], []
         case "QUARANTINED":
-            inputs = [dataset(pipeline.source, domain, source_columns, cls=InputDataset)]
-            outputs = [dataset(quarantined(pipeline.target), domain, target_columns)]
+            # The quarantined copy carries the same classification as the
+            # declared target: failing a quality rule does not make the data
+            # less personal, and the side copy is the one somebody eventually
+            # opens without the descriptor in front of them.
+            inputs = [
+                dataset(pipeline.source, domain, source_columns, source_tags, cls=InputDataset)
+            ]
+            outputs = [dataset(quarantined(pipeline.target), domain, target_columns, tags)]
         case _:
-            inputs = [dataset(pipeline.source, domain, source_columns, cls=InputDataset)]
-            outputs = [dataset(pipeline.target, domain, target_columns)]
+            inputs = [
+                dataset(pipeline.source, domain, source_columns, source_tags, cls=InputDataset)
+            ]
+            outputs = [dataset(pipeline.target, domain, target_columns, tags)]
 
     # 3. The terminal event — one per run, always
     terminal = RunEvent(

@@ -158,6 +158,14 @@ guarantee, the catalog version pin, LF-tag resolution against a
 governance-owned ontology, the Great Expectations suite, and the OpenLineage
 events including the provenance facet.
 
+The events also carry the classification the run resolved, as the standard
+`TagsDatasetFacet`: the dataset a run writes carries its contract's `lf_tags`,
+and the dataset it reads carries whatever the catalog already holds for that
+table, which is usually nothing for a table an application publishes. A
+pipeline never classifies the table it read — its own `lf_tags` describe what it
+publishes. The reasoning is on
+[#3](https://github.com/cordata-tech/pipeline-runtime/issues/3).
+
 **Local stand-ins**, swapped inside `src/pipeline_runtime/backends/local.py`:
 
 | The descriptor says | AWS would use | this repo uses |

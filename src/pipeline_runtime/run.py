@@ -149,6 +149,10 @@ def execute(
         # catalog answered this when the pin was checked; carrying it outward
         # is what extends the provenance chain past the pipeline's own commit.
         source_publication=schema.publication,
+        # Classification, from the authority for each side: the contract for
+        # what this run publishes, the catalog for what it read (#3).
+        tags=tags,
+        source_tags=catalog.tags_for(pipeline.source),
     )
 
     if not result.success:

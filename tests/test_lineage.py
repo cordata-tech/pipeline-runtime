@@ -253,6 +253,89 @@ def test_art_30_fields_travel_as_a_job_facet(emitted):
     assert facet["legal_basis"] == pipeline.processing.legal_basis
 
 
+def test_the_resolved_tags_travel_on_the_dataset_they_classify(emitted):
+    """Part 1 § 6's tags, resolved against the ontology and then emitted.
+
+    `TagsDatasetFacet` is a plain `DatasetFacet`, so it belongs in `facets` —
+    the opposite of the quality facet in `docs/post-corrections.md` § 1, and
+    worth asserting rather than assuming, since the two read alike in a payload.
+    """
+    from openlineage.client.generated.base import DatasetFacet
+    from openlineage.client.generated.tags_dataset import TagsDatasetFacet
+
+    assert issubclass(TagsDatasetFacet, DatasetFacet)
+
+    pipeline = load(FRAUD)
+    facet = emitted()[0]["outputs"][0]["facets"]["tags"]
+    assert {t["key"]: t["value"] for t in facet["tags"]} == pipeline.contract.lf_tags
+    assert {t["source"] for t in facet["tags"]} == {"CORDATA_PIPELINE_RUNTIME"}
+
+
+def test_a_pipeline_does_not_classify_the_table_it_read(emitted):
+    """`contract.lf_tags` describe what this pipeline publishes.
+
+    Copying them onto the input would assert a classification for someone
+    else's table that nobody checked — and the fraud source carries none in the
+    catalog, so the honest answer is no facet at all.
+    """
+    assert "tags" not in emitted()[0]["inputs"][0]["facets"]
+
+
+def test_a_source_the_catalog_has_classified_carries_that_classification(monkeypatch, tmp_path):
+    """When the table read *is* another pipeline's product, the catalog knows.
+
+    Seeded into its own root, with the classification written the way
+    `register` writes one at publish, because the shared session catalog has no
+    tags for the fraud source and stamping some would leak into every test
+    after this one.
+    """
+    from pipeline_runtime import catalog
+
+    from .conftest import _seed, environment
+
+    root = tmp_path / "classified"
+    root.mkdir()
+    _seed(root)
+    log = tmp_path / "lineage.ndjson"
+    for key, value in {**environment(root), "CORDATA_LINEAGE_OUT": str(log)}.items():
+        if key.startswith("CORDATA_"):
+            monkeypatch.setenv(key, value)
+
+    upstream = {"sensitivity": "high", "residency": "eu", "retention": "7y"}
+    with catalog.connect() as con:
+        con.executemany(
+            "INSERT INTO _catalog.lf_tags VALUES ('fraud_raw', 'transactions', ?, ?)",
+            list(upstream.items()),
+        )
+
+    run(FRAUD, str(uuid.uuid4()))
+
+    event = json.loads(log.read_text().splitlines()[0])
+    read = event["inputs"][0]["facets"]["tags"]["tags"]
+    assert {t["key"]: t["value"] for t in read} == upstream
+
+    written = event["outputs"][0]["facets"]["tags"]["tags"]
+    assert {t["key"] for t in written} == set(load(FRAUD).contract.lf_tags), (
+        "the output keeps its own contract's tags rather than inheriting the source's"
+    )
+
+
+def test_a_quarantined_copy_keeps_the_classification(env, events, scenario):
+    """Failing a quality rule does not make the data less personal, and the
+    side copy is the one somebody eventually opens without the descriptor in
+    front of them."""
+    from .conftest import IMPOSSIBLE
+
+    descriptor = scenario(CLAIMS, expectations=IMPOSSIBLE)
+    run(descriptor, str(uuid.uuid4()))
+
+    output = events()[0]["outputs"][0]
+    assert output["name"].endswith("_quarantined")
+    assert {t["key"]: t["value"] for t in output["facets"]["tags"]["tags"]} == load(
+        CLAIMS
+    ).contract.lf_tags
+
+
 def test_the_namespace_is_the_domain_not_the_bucket(emitted):
     pipeline = load(FRAUD)
     event = emitted()[0]
