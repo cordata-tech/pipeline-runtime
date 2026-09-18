@@ -37,6 +37,7 @@ from openlineage.client.facet_v2 import JobFacet, RunFacet, error_message_run, s
 from openlineage.client.transport.file import FileConfig, FileTransport
 
 from . import __version__
+from .catalog import Publication
 from .descriptor import Descriptor, TableRef, quarantined
 from .errors import PipelineError
 from .expectations import Validation
@@ -87,6 +88,15 @@ class ProvenanceRunFacet(RunFacet):
     descriptor_git_commit_signed: bool
     executor_version: str
     step_params: dict[str, dict[str, str]]
+    # The application release behind the source version this run read. Unset
+    # when the catalog records no producer for it — a Glue version written by a
+    # crawler, or by a job that set no parameters, looks exactly like that — and
+    # unset on a run that read nothing. The client drops a None-valued field on
+    # the way out, so an absent key is the wire spelling of "nobody recorded
+    # it", which is the answer a consumer can act on: ask, rather than be told
+    # a release that did not publish this version.
+    source_published_by: str | None = None
+    source_published_release: str | None = None
 
     @staticmethod
     def _get_schema() -> str:
@@ -109,7 +119,9 @@ class ProcessingJobFacet(JobFacet):
         return "https://github.com/cordata-tech/pipeline-runtime/blob/main/schemas/processing.json"
 
 
-def provenance_facet(pipeline: Descriptor, descriptor_path: Path) -> ProvenanceRunFacet:
+def provenance_facet(
+    pipeline: Descriptor, descriptor_path: Path, source: Publication | None = None
+) -> ProvenanceRunFacet:
     commit, signed = _git_provenance(descriptor_path)
     return ProvenanceRunFacet(
         descriptor_path=str(descriptor_path),
@@ -120,6 +132,8 @@ def provenance_facet(pipeline: Descriptor, descriptor_path: Path) -> ProvenanceR
         descriptor_git_commit_signed=signed,
         executor_version=f"pipeline-runtime {__version__}",
         step_params={s.id: s.params for s in pipeline.steps if s.params},
+        source_published_by=source.producer if source else None,
+        source_published_release=source.release if source else None,
     )
 
 
@@ -182,6 +196,7 @@ def emit(
     error: PipelineError | None = None,
     source_columns: Sequence[tuple[str, str]] | None = None,
     target_columns: Sequence[tuple[str, str]] | None = None,
+    source_publication: Publication | None = None,
 ) -> list[RunEvent]:
     """Emit the run's terminal event, plus the assertion event when a suite ran.
 
@@ -189,6 +204,10 @@ def emit(
     descriptor declared: the source's shape comes from the catalog and the
     target's from the frame about to be written. Reporting the declaration
     instead would make the schema facet unfalsifiable.
+
+    `source_publication` is the release that published the version the run
+    read, and it is absent on a run that read nothing — a run that died on
+    drift touched no version, so claiming one on its event would be a guess.
 
     Returns what was emitted so tests can assert on it — the executor itself
     ignores the return value.
@@ -199,7 +218,7 @@ def emit(
 
     # 1. Run facets — provenance always, plus the reason if this run died (§ 4)
     run_facets: dict[str, RunFacet] = {
-        "cordata_provenance": provenance_facet(pipeline, descriptor_path)
+        "cordata_provenance": provenance_facet(pipeline, descriptor_path, source_publication)
     }
     if error is not None:
         run_facets["errorMessage"] = error_message_run.ErrorMessageRunFacet(

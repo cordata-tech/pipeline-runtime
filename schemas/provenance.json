@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/cordata-tech/pipeline-runtime/blob/main/schemas/provenance.json",
   "title": "CordataProvenanceRunFacet",
-  "description": "What was declared, and what authorised it. Emitted as `cordata_provenance` on every run event, terminal or not. The point of the whole block is that an auditor can get from a published number back to the reviewed commit without asking anybody.",
+  "description": "What was declared, and what authorised it. Emitted as `cordata_provenance` on every run event, terminal or not. The point of the whole block is that an auditor can get from a published number back to the reviewed commit without asking anybody — and, through source_published_by and source_published_release, back to the application release that set the shape it read.",
   "type": "object",
   "allOf": [
     { "$ref": "https://openlineage.io/spec/2-0-2/OpenLineage.json#/$defs/RunFacet" },
@@ -41,6 +41,16 @@
           "type": "string",
           "description": "Name and version of the executor that ran this.",
           "example": "pipeline-runtime 0.1.0"
+        },
+        "source_published_by": {
+          "type": ["string", "null"],
+          "description": "The producer that published the source version this run read — an application or team name, as the catalog records it. Absent when the catalog records no producer for that version, which is what a Glue version written by a crawler, or by a job that set no parameters, looks like, and absent on a run that read nothing, such as one that died on schema drift. Absent rather than null on the wire, because the OpenLineage client omits a field it has no value for.",
+          "example": "card-ledger"
+        },
+        "source_published_release": {
+          "type": ["string", "null"],
+          "description": "The release reference that published that version — a tag or a commit. Absent under the same conditions as source_published_by, and never carried forward from an earlier version.",
+          "example": "v4.11.0"
         },
         "step_params": {
           "type": "object",

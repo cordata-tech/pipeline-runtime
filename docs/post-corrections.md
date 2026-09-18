@@ -172,3 +172,35 @@ split, in `example/domains/policy/sql/dedupe_cdc.sql`.
 split: the reader collapses the change log, which is true of every DMS source and
 therefore the platform's; the step drops the domain's own duplicates, which only
 the domain can define. The ownership line in § 7 runs between them.
+
+---
+
+## Later additions — not corrections
+
+The five above are places the articles were wrong. This section is for fields
+the articles gained afterwards, where nothing they said stopped being true. It
+exists so a reader who read a post earlier can see what moved, and so the repo
+and the article can be checked against each other without the difference
+looking like drift.
+
+### `cordata_provenance` gained the release behind the source version — 2026-09-18
+
+Part 2 § 4's facet chained a published number back to the reviewed commit that
+authorised the *pipeline*, and stopped there. It said nothing about the
+application release that gave the input its shape, so a number could pass every
+check and still have been read from a column an application release had quietly
+redefined.
+
+`source_published_by` and `source_published_release` close that, and are now in
+both language versions of part 2 § 4 as well as here. They come from
+`_catalog.versions`, which
+[#1](https://github.com/cordata-tech/pipeline-runtime/issues/1) added, and both
+are absent rather than null when the catalog records no producer for the version
+— what a Glue version written by a crawler looks like. Naming the previous
+release instead would attribute a change to a team that did not make it.
+
+The reasoning, and the two alternatives it was chosen over, are on
+[#2](https://github.com/cordata-tech/pipeline-runtime/issues/2).
+`tests/test_lineage.py` holds both directions, and
+`test_the_facet_matches_the_schema_it_publishes` holds `schemas/provenance.json`
+to whatever the facet actually emits.

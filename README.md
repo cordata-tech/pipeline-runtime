@@ -82,7 +82,11 @@ Nothing was read, nothing was written, nothing was published, and the error
 names the exact column, the release that changed it, and the exact remedy. The
 release comes from the catalog: every source-table version is published with a
 producer and a release reference (`catalog.publish`), so the person reading the
-failure knows which team to ask without having to go and find out. A `FAIL`
+failure knows which team to ask without having to go and find out. The same
+pair travels outward on a successful run, as `source_published_by` and
+`source_published_release` in the `cordata_provenance` facet, which is what
+carries the provenance chain past the pipeline's own commit to the application
+change behind its input. A `FAIL`
 event still reached the lineage log carrying the reason — the point being that a
 supervisor can tell "this run died on drift" apart from "nobody scheduled it".
 

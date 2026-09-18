@@ -10,6 +10,7 @@ catch, and did.
 
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
@@ -127,6 +128,111 @@ def test_provenance_pins_the_declaration_that_ran(emitted):
     assert facet["source_schema_version"] == pipeline.source.schema_version
     assert facet["executor_version"] == f"pipeline-runtime {__version__}"
     assert facet["step_params"]["score"]["model_version"] == "2026-07-fraud-v3"
+
+
+def test_provenance_names_the_release_that_published_what_the_run_read(emitted):
+    """The chain past the pipeline's own commit, to the application change.
+
+    `descriptor_git_commit_signed` reaches the commit that authorised the
+    pipeline. These two reach the release that set the shape it read, which is
+    the half a published number was missing.
+    """
+    facet = emitted()[0]["run"]["facets"]["cordata_provenance"]
+    assert facet["source_published_by"] == "card-ledger"
+    assert facet["source_published_release"] == "v4.11.0"
+
+
+def test_an_unattributed_version_names_nobody_rather_than_guessing(monkeypatch, tmp_path):
+    """What a Glue version written by a crawler looks like from here.
+
+    Reporting the previous release instead would name a team that did not make
+    the change, which is worse than saying nothing. Seeded into its own root
+    rather than the session's, because stripping attribution from the shared
+    catalog would make every later test fail for the wrong reason.
+    """
+    from pipeline_runtime import catalog
+
+    from .conftest import _seed, environment
+
+    root = tmp_path / "unattributed"
+    root.mkdir()
+    _seed(root)
+    log = tmp_path / "lineage.ndjson"
+    for key, value in {**environment(root), "CORDATA_LINEAGE_OUT": str(log)}.items():
+        if key.startswith("CORDATA_"):
+            monkeypatch.setenv(key, value)
+
+    with catalog.connect() as con:
+        con.execute('DELETE FROM _catalog.versions WHERE "table" = ?', ["transactions"])
+
+    run(FRAUD, str(uuid.uuid4()))
+
+    facet = json.loads(log.read_text().splitlines()[0])["run"]["facets"]["cordata_provenance"]
+    assert facet.get("source_published_by") is None
+    assert facet.get("source_published_release") is None
+    assert facet["source_schema_version"] == 7, "the version itself is still known"
+
+
+def test_a_run_that_read_nothing_claims_no_release(seeded, monkeypatch, tmp_path):
+    """A run that died on drift touched no version, so it has none to name."""
+    from pipeline_runtime.errors import SchemaDrift
+
+    from .conftest import _seed, environment
+
+    root = tmp_path / "drifted"
+    root.mkdir()
+    _seed(root, drift=True)
+    log = tmp_path / "lineage.ndjson"
+    for key, value in {**environment(root), "CORDATA_LINEAGE_OUT": str(log)}.items():
+        if key.startswith("CORDATA_"):
+            monkeypatch.setenv(key, value)
+
+    with pytest.raises(SchemaDrift):
+        run(FRAUD, str(uuid.uuid4()))
+
+    facet = json.loads(log.read_text().splitlines()[0])["run"]["facets"]["cordata_provenance"]
+    assert facet.get("source_published_by") is None
+    assert facet.get("source_published_release") is None
+    assert facet["source_schema_version"] == 7, "what it pinned, not what it read"
+
+
+def test_a_blocked_publish_still_names_the_release_it_read(env, events, scenario):
+    """It got as far as validating, so it did read a version.
+
+    The drift case above is the one with nothing to name; a run that read the
+    source and then refused to publish is not, and an event that dropped the
+    release here would lose the attribution exactly when someone is
+    investigating.
+    """
+    from pipeline_runtime.errors import PublishBlocked
+
+    from .conftest import IMPOSSIBLE
+
+    descriptor = scenario(FRAUD, expectations=IMPOSSIBLE)
+    with pytest.raises(PublishBlocked):
+        run(descriptor, str(uuid.uuid4()))
+
+    facet = events()[0]["run"]["facets"]["cordata_provenance"]
+    assert facet["source_published_by"] == "card-ledger"
+    assert facet["source_published_release"] == "v4.11.0"
+
+
+def test_the_facet_matches_the_schema_it_publishes(emitted):
+    """`schemas/provenance.json` is the contract the facet's `_schemaURL` points
+    at, so a field on one and not the other is a broken promise to a consumer.
+
+    Equality here, not containment: this run reads an attributed version, so
+    every declared field has a value to carry. Fields whose value is unknown
+    are absent rather than null, because the OpenLineage client drops them on
+    the way out — which the schema says.
+    """
+    from .paths import REPO
+
+    published = json.loads((REPO / "schemas/provenance.json").read_text())["allOf"][1]
+    emitted_keys = {k for k in emitted()[0]["run"]["facets"]["cordata_provenance"] if k[0] != "_"}
+
+    assert emitted_keys == set(published["properties"])
+    assert set(published["required"]) <= emitted_keys
 
 
 def test_provenance_is_a_run_facet_not_a_job_facet(emitted):

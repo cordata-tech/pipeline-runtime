@@ -70,11 +70,25 @@ def run(descriptor_path: Path, run_id: str, trace: Trace | None = None) -> None:
         f"{pipeline.metadata.name} ({pipeline.metadata.domain})",
         f"apiVersion {declared.apiVersion.split('/')[-1]} OK",
     )
+    # Filled by `execute` once the pin is checked, and read here if the run
+    # dies afterwards. A failure that got as far as reading the source still
+    # knows which release published what it read — a blocked publish is the
+    # usual case — while one that died on drift leaves this empty, because it
+    # read no version and the event must not claim otherwise.
+    source: dict[str, catalog.Publication | None] = {}
     try:
-        execute(pipeline, descriptor_path, descriptor_path.parents[1], run_id, trace)
+        execute(pipeline, descriptor_path, descriptor_path.parents[1], run_id, trace, source)
     except PipelineError as exc:
         trace.failed(exc)
-        emit(pipeline, descriptor_path, run_id, exc.result, status="FAIL", error=exc)
+        emit(
+            pipeline,
+            descriptor_path,
+            run_id,
+            exc.result,
+            status="FAIL",
+            error=exc,
+            source_publication=source.get("publication"),
+        )
         raise
 
 
@@ -84,6 +98,7 @@ def execute(
     domain_root: Path,
     run_id: str,
     trace: Trace,
+    source: dict[str, catalog.Publication | None] | None = None,
 ) -> None:
     # Paths inside a descriptor (`sql/…`, `expectations/…`) are relative to the
     # domain root, not to the descriptor — descriptors sit in <domain>/pipelines/.
@@ -101,6 +116,8 @@ def execute(
         trace("schema", pipeline.source.fqn, f"pinned v{pinned}, catalog v{exc.found}")
         raise
     trace("schema", pipeline.source.fqn, f"pinned v{pinned}, catalog v{schema.version} OK")
+    if source is not None:
+        source["publication"] = schema.publication
 
     reader = _dispatch(backend.READERS, "READERS", pipeline.source.kind)
     frame = reader(pipeline.source, schema)
@@ -128,6 +145,10 @@ def execute(
     shapes = dict(
         source_columns=[(c.name, c.type) for c in schema.columns],
         target_columns=[(str(n), str(t).upper()) for n, t in frame.dtypes.items()],
+        # Which application release published the version that was read. The
+        # catalog answered this when the pin was checked; carrying it outward
+        # is what extends the provenance chain past the pipeline's own commit.
+        source_publication=schema.publication,
     )
 
     if not result.success:

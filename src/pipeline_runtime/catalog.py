@@ -103,6 +103,10 @@ class Schema:
 
     version: int
     columns: tuple[Column, ...]
+    # Who published this version, when the catalog records it. Resolved here
+    # rather than looked up again at emit time, because this is the one place
+    # that already knows which version the run is reading.
+    publication: Publication | None = None
 
     @property
     def names(self) -> list[str]:
@@ -136,13 +140,14 @@ class Schema:
         return out
 
     @classmethod
-    def from_catalog(cls, rows: list[tuple]) -> Schema:
+    def from_catalog(cls, rows: list[tuple], publication: Publication | None = None) -> Schema:
         return cls(
             version=rows[0][0],
             columns=tuple(
                 Column(name=n, type=t, nullable=bool(nul), primary_key=bool(pk))
                 for _, n, t, nul, pk in rows
             ),
+            publication=publication,
         )
 
 
@@ -203,7 +208,7 @@ def resolve(source: Source) -> Schema:
                 f"Bump the pin to v{version} to accept.",
                 found=version,
             )
-        return Schema.from_catalog(_rows(con, source, version))
+        return Schema.from_catalog(_rows(con, source, version), publication(con, source, version))
 
 
 def columns_at(con: duckdb.DuckDBPyConnection, ref: TableRef, version: int) -> tuple[Column, ...]:
@@ -306,6 +311,12 @@ def publications(
         [ref.database, ref.table, after, upto],
     ).fetchall()
     return [Publication(v, producer, release) for v, producer, release in found]
+
+
+def publication(con: duckdb.DuckDBPyConnection, ref: TableRef, version: int) -> Publication | None:
+    """Who published one version, or None when the catalog does not record it."""
+    found = publications(con, ref, after=version - 1, upto=version)
+    return found[0] if found and found[0].producer is not None else None
 
 
 def published_since(con: duckdb.DuckDBPyConnection, ref: TableRef, pinned: int) -> str:
