@@ -61,6 +61,31 @@ def test_the_write_registers_the_contract_it_was_executed_against(env):
     assert tags == pipeline.contract.lf_tags
 
 
+def test_the_trace_is_the_only_thing_the_run_prints(env, capfd):
+    """The README quotes nine trace lines, so a run has to print nine lines.
+
+    Great Expectations draws a progress bar per metric on stderr, which buried
+    the trace and made the documented output untrue for anyone who ran it.
+    `validate` turns the drawing off; this is the guard, at file-descriptor
+    level because that is where a progress bar is written.
+    """
+    run(FRAUD, str(uuid.uuid4()))
+
+    out, err = capfd.readouterr()
+    assert "Calculating Metrics" not in out + err, "progress bars are back on top of the trace"
+    assert [line.split(maxsplit=1)[1].split()[0] for line in out.splitlines() if line.strip()] == [
+        "descriptor",
+        "schema",
+        "read",
+        "step",
+        "step",
+        "policy",
+        "expect",
+        "write",
+        "emit",
+    ]
+
+
 def test_partitioning_follows_the_declaration(env):
     pipeline = load(FRAUD)
     run(FRAUD, str(uuid.uuid4()))

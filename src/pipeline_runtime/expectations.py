@@ -16,6 +16,7 @@ from pathlib import Path
 import great_expectations as gx
 import pandas as pd
 import yaml
+from great_expectations.data_context.types.base import ProgressBarsConfig
 from openlineage.client.facet_v2 import data_quality_assertions_dataset as dqa
 
 
@@ -128,6 +129,11 @@ def validate(frame: pd.DataFrame, suite: Suite) -> Validation:
     there means nothing is published and no consumer sees the bad batch.
     """
     context = gx.get_context(mode="ephemeral")
+    # Great Expectations draws a progress bar per metric on stderr. In a
+    # terminal they bury the run trace, which is the executor's own output and
+    # the thing the README documents; in a log they are hundreds of lines
+    # nobody reads. The results are unaffected — this turns off the drawing.
+    context.variables.progress_bars = ProgressBarsConfig(globally=False)
     batch = (
         context.data_sources.add_pandas("frame")
         .add_dataframe_asset("frame")
