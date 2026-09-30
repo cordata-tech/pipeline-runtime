@@ -195,6 +195,11 @@ pinned a version, that version is no longer in the catalog to resolve. This
 repo's `_catalog` keeps every version, which matches Glue only when
 `glue.skip-archive=false` is set on the engine writing the table.
 
+A crawler costs nothing, which was the third thing worth checking rather than
+assuming: it merges its own parameters into whatever it finds, leaves a
+publishing job's keys alone, and archives the version it replaces
+([docs/evidence/glue-crawler-recrawl.md](docs/evidence/glue-crawler-recrawl.md)).
+
 The descriptors are **unchanged** between the two — fraud and claims byte for
 byte the ones published in part 1 § 2, comments included, which
 `tests/test_post_conformance.py` enforces. That is the substance of part 1 § 2

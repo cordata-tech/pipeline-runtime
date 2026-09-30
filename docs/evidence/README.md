@@ -40,4 +40,10 @@ Whether the attribution the local catalog keeps in `_catalog.versions` has a car
 
 The same question asked of the write path the published descriptors actually name, `target.kind: iceberg`, run on 2026-09-30. An Iceberg commit keeps `cordata:producer` and `cordata:release`, because the engine reads the current parameters and sends the whole map back. What it discards is the Glue version that carried them: `pyiceberg` passes `SkipArchive=True` by default, so two commits after a pin was written the version that pin names is gone from the catalog, and `glue.skip-archive=false` is what restores it.
 
-That inverts what [#4](https://github.com/cordata-tech/pipeline-runtime/issues/4) expected, and moves the risk from attribution to the pin itself. The local catalog keeps every version, so it models Glue with archiving on, and a deployment pointing descriptors at Iceberg tables has to make the real catalog match. A crawler run is still untested.
+That inverts what [#4](https://github.com/cordata-tech/pipeline-runtime/issues/4) expected, and moves the risk from attribution to the pin itself. The local catalog keeps every version, so it models Glue with archiving on, and a deployment pointing descriptors at Iceberg tables has to make the real catalog match.
+
+## `glue-crawler-recrawl.md`
+
+The third write path, run on 2026-09-30, and the one that costs nothing. A crawler re-crawling a table it manages sees the schema change, rewrites its own fifteen parameters, and leaves `cordata:producer` and `cordata:release` exactly as a publishing job set them — and it archives, so the version a descriptor pinned is still in `GetTableVersions` with the shape and the release it promised.
+
+The probe also creates the IAM role a crawler runs as, and two crawls bill a ten-minute minimum of DPU time each, so unlike the other transcripts this one cost a few cents. Its first attempt measured the fixture rather than the crawler — a two-line CSV gave the classifier no way to tell a header from data, and the columns came back as `col0` and `col1` — which the file records, because the corrected fixture is why `skip.header.line.count` appears in the parameters.

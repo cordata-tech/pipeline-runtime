@@ -14,12 +14,17 @@ dependencies are not the repository's and this is not part of the quickstart:
 
     AWS_PROFILE=… python -m tools.glue_probe            # UpdateTable, then clean up
     AWS_PROFILE=… python -m tools.glue_probe --iceberg  # an Iceberg commit instead
+    AWS_PROFILE=… python -m tools.glue_probe --crawler  # a crawler re-crawling a table
     AWS_PROFILE=… python -m tools.glue_probe --keep     # leave what it made behind
 
 The default mode creates one throwaway database and writes three table versions
 into it. `--iceberg` also creates a throwaway S3 bucket, because an Iceberg table
-needs a warehouse to write metadata to. Both delete what they made, touch nothing
-else in the account, and refuse to run if the database already exists.
+needs a warehouse to write metadata to. `--crawler` creates a bucket, a crawler
+and the IAM role a crawler runs as, and takes a few minutes because it waits for
+two crawls; a crawl bills a ten-minute minimum of DPU time, so this mode costs a
+few cents where the others cost nothing. Every mode deletes what it made,
+touches nothing else in the account, and refuses to run if the database already
+exists.
 """
 
 from __future__ import annotations
@@ -28,6 +33,7 @@ import contextlib
 import json
 import secrets
 import sys
+import time
 
 import boto3
 
@@ -225,6 +231,185 @@ def probe_iceberg(bucket: str) -> None:
         print(f"    the pinned version is one of them:    {int(pinned_version) in ids}")
 
 
+# ---------------------------------------------------------------- the crawler probe
+
+CRAWLER = "cordata-contract-probe"
+ROLE = "cordata-contract-probe-crawler"
+GLUE_SERVICE_POLICY = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+
+TRUST = {
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {"Service": "glue.amazonaws.com"},
+            "Action": "sts:AssumeRole",
+        }
+    ],
+}
+
+
+def make_role(bucket: str) -> str:
+    """The role a crawler runs as: Glue's own service policy plus read on one bucket."""
+    iam = boto3.client("iam")
+    arn = iam.create_role(
+        RoleName=ROLE,
+        AssumeRolePolicyDocument=json.dumps(TRUST),
+        Description="throwaway, pipeline-runtime#4",
+    )["Role"]["Arn"]
+    iam.attach_role_policy(RoleName=ROLE, PolicyArn=GLUE_SERVICE_POLICY)
+    iam.put_role_policy(
+        RoleName=ROLE,
+        PolicyName="read-the-probe-bucket",
+        PolicyDocument=json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": ["s3:GetObject", "s3:ListBucket"],
+                        "Resource": [f"arn:aws:s3:::{bucket}", f"arn:aws:s3:::{bucket}/*"],
+                    }
+                ],
+            }
+        ),
+    )
+    # The name rather than the ARN: a transcript of this run is committed to a
+    # public repository, and the ARN carries the account id.
+    print(f"role       {ROLE}")
+    return arn
+
+
+def delete_role() -> None:
+    iam = boto3.client("iam")
+    with contextlib.suppress(iam.exceptions.NoSuchEntityException):
+        iam.detach_role_policy(RoleName=ROLE, PolicyArn=GLUE_SERVICE_POLICY)
+    with contextlib.suppress(iam.exceptions.NoSuchEntityException):
+        iam.delete_role_policy(RoleName=ROLE, PolicyName="read-the-probe-bucket")
+    with contextlib.suppress(iam.exceptions.NoSuchEntityException):
+        iam.delete_role(RoleName=ROLE)
+
+
+def put_rows(bucket: str, header: str) -> None:
+    """One CSV under the crawled prefix, replacing whatever was there.
+
+    The prefix is the table's name, because that is how a crawler names what it
+    finds — `s3://bucket/transactions/` becomes the table `transactions`.
+
+    Replacing rather than adding, because a crawler groups a prefix by
+    compatible schema and two shapes under one prefix can become two tables,
+    which would measure the crawler's grouping rather than what it does to
+    parameters.
+    """
+    s3 = boto3.client("s3")
+    for old in s3.list_objects_v2(Bucket=bucket, Prefix=f"{TABLE}/").get("Contents", []):
+        s3.delete_object(Bucket=bucket, Key=old["Key"])
+
+    # Several rows, and values that are not strings, because the CSV classifier
+    # infers a header row by its types differing from the rows below it. Two
+    # rows of `x` gave columns named col0 and col1, which measures the fixture
+    # rather than the crawler.
+    columns = header.split(",")
+    rows = [header]
+    for i in range(1, 6):
+        rows.append(",".join([f"tx-{i:04d}", f"{i * 10.5:.2f}"] + ["5411"] * (len(columns) - 2)))
+    s3.put_object(Bucket=bucket, Key=f"{TABLE}/rows.csv", Body=("\n".join(rows) + "\n").encode())
+
+
+def crawl(role_arn: str, bucket: str, first: bool) -> None:
+    """Run the crawler once and wait for it, retrying while IAM catches up."""
+    glue_client = boto3.client("glue")
+    if first:
+        for attempt in range(12):
+            try:
+                glue_client.create_crawler(
+                    Name=CRAWLER,
+                    Role=role_arn,
+                    DatabaseName=DB,
+                    Targets={"S3Targets": [{"Path": f"s3://{bucket}/{TABLE}/"}]},
+                    SchemaChangePolicy={
+                        "UpdateBehavior": "UPDATE_IN_DATABASE",
+                        "DeleteBehavior": "LOG",
+                    },
+                )
+                break
+            except glue_client.exceptions.InvalidInputException as exc:
+                # A freshly created role is not visible to Glue for a few
+                # seconds, and the error it gives is about the role rather than
+                # about the request.
+                if attempt == 11:
+                    raise
+                print(f"    waiting for the role to propagate ({exc.response['Error']['Code']})")
+                time.sleep(5)
+
+    glue_client.start_crawler(Name=CRAWLER)
+    started = time.monotonic()
+    while True:
+        crawler = glue_client.get_crawler(Name=CRAWLER)["Crawler"]
+        if crawler["State"] == "READY" and crawler.get("LastCrawl", {}).get("Status") != "RUNNING":
+            break
+        if time.monotonic() - started > 900:
+            raise TimeoutError(f"crawler still {crawler['State']} after 15 minutes")
+        time.sleep(10)
+    last = crawler.get("LastCrawl", {})
+    print(f"    crawl finished: {last.get('Status')} in {int(time.monotonic() - started)}s")
+
+
+def columns_of(table_name: str) -> list[str]:
+    table = glue.get_table(DatabaseName=DB, Name=table_name)["Table"]
+    return [c["Name"] for c in table["StorageDescriptor"]["Columns"]]
+
+
+def probe_crawler(bucket: str) -> None:
+    """Does a crawler keep a publishing job's keys, and the version they were on?
+
+    The case the local catalog cannot model: a table an application publishes and
+    a crawler also manages. The crawler creates the table, the publishing job
+    stamps attribution onto it, the data's shape then changes, and the next crawl
+    decides whether either survives.
+    """
+    role_arn = make_role(bucket)
+
+    put_rows(bucket, "tx_id,amount_eur")
+    print("\n--- first crawl, which creates the table")
+    crawl(role_arn, bucket, first=True)
+    created = show("1. after the crawler created the table")
+
+    pinned = stamp(TABLE, "v4.11.0")
+    pinned_version = glue.get_table(DatabaseName=DB, Name=TABLE)["Table"]["VersionId"]
+
+    put_rows(bucket, "tx_id,amount_eur,merchant_category_code")
+    print("\n--- second crawl, after the data gained a column")
+    crawl(role_arn, bucket, first=False)
+    after = show("3. after the crawler re-crawled it")
+    print(f"    the shape the crawler now reports: {columns_of(TABLE)}")
+
+    kept = versions()
+    ids = sorted(int(v["VersionId"]) for v in kept)
+
+    print("\n=== answers [crawler]")
+    print(f"    producer survived the re-crawl:       {PRODUCER in after}")
+    print(f"    release survived the re-crawl:        {RELEASE in after}")
+    print(f"    the crawler's own keys are still set: {'UPDATED_BY_CRAWLER' in after}")
+    print(
+        "    the crawler rewrote its own keys:     "
+        f"{created.get('CRAWL_RUN_ID') != after.get('CRAWL_RUN_ID')}"
+    )
+    print(f"    the crawler saw the new column:       {len(columns_of(TABLE)) == 3}")
+    print(f"    the pinned version was v{pinned_version}, stamped {RELEASE}={pinned[RELEASE]}")
+    print(f"    versions Glue still holds:            {ids}")
+    print(f"    the pinned version is one of them:    {int(pinned_version) in ids}")
+    print(f"    keys the crawler wrote at creation:   {sorted(created)}")
+
+
+def cleanup_crawler() -> None:
+    glue_client = boto3.client("glue")
+    with contextlib.suppress(glue_client.exceptions.EntityNotFoundException):
+        glue_client.delete_crawler(Name=CRAWLER)
+    delete_role()
+    print("cleaned up: crawler and role deleted")
+
+
 # ---------------------------------------------------------------- entry point
 
 
@@ -237,15 +422,21 @@ def main() -> int:
         print(f"database {DB} already exists; refusing to touch it", file=sys.stderr)
         return 1
 
-    if "--iceberg" in sys.argv:
+    for flag, probe, also_cleanup in (
+        ("--iceberg", probe_iceberg, lambda: None),
+        ("--crawler", probe_crawler, cleanup_crawler),
+    ):
+        if flag not in sys.argv:
+            continue
         bucket = make_bucket()
         glue.create_database(
             DatabaseInput={"Name": DB, "Description": "throwaway, pipeline-runtime#4"}
         )
         try:
-            probe_iceberg(bucket)
+            probe(bucket)
         finally:
             if "--keep" not in sys.argv:
+                also_cleanup()
                 cleanup()
                 empty_and_delete_bucket(bucket)
                 print(f"cleaned up: bucket {bucket} deleted")

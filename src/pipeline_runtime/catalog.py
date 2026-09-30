@@ -357,11 +357,14 @@ def publish(
     write the full set each time, and a local catalog that quietly carried an
     earlier release forward would model something the real one does not do.
 
-    An Iceberg commit through Glue keeps the keys, because the engine sends the
-    whole map back, but by default it asks Glue not to archive the version it
-    replaced — so the history this table keeps is longer than the one Glue keeps
-    under Iceberg. `docs/evidence/glue-iceberg-commit.md` measures both, and
-    names the setting that restores archiving.
+    Two other write paths were measured rather than guessed at. An Iceberg
+    commit keeps the keys, because the engine sends the whole map back, but by
+    default it asks Glue not to archive the version it replaced, so the history
+    this table keeps is longer than the one Glue keeps under Iceberg
+    (`docs/evidence/glue-iceberg-commit.md`, which names the setting that
+    restores archiving). A crawler merges its own parameters into whatever it
+    finds and archives as usual, so it costs neither the keys nor the pinned
+    version (`docs/evidence/glue-crawler-recrawl.md`).
 
     Versions only move forward, as in Glue's version history. An existing
     version is never rewritten, because a pin on it is a claim about its shape.
