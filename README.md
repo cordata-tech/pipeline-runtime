@@ -220,6 +220,24 @@ part 1 § 2 rule 3 applied to the runtime itself.
 | `CORDATA_ONTOLOGY` | `example/ontology.json` | the LF-tag vocabulary |
 | `CORDATA_LINEAGE_OUT` | `out/lineage.ndjson` | where events are written |
 
+## Installing it as a dependency
+
+```
+pip install cordata-pipeline-runtime
+```
+
+That gives another tool the descriptor model (`pipeline_runtime.descriptor`),
+the executor and the policy resolution to depend on by name, which is what
+`catalog-mcp` does. **The name matters:** the bare `pipeline-runtime` on PyPI is
+an unrelated package, and a dependency line using it installs cleanly and fails
+at import.
+
+The wheel does not carry `example/`, because the example descriptors stay
+byte-identical to the ones the articles publish and live with them in the
+repository. An installed copy reads its ontology and catalog from the
+variables above, whose defaults are the repository layout — so the quickstart
+still starts from a clone.
+
 ## Tests
 
 ```bash

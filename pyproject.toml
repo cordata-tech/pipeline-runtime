@@ -30,6 +30,9 @@ pipeline-runtime = "pipeline_runtime.__main__:main"
 
 [project.urls]
 Homepage = "https://cordata.tech"
+Source = "https://github.com/cordata-tech/pipeline-runtime"
+Changelog = "https://github.com/cordata-tech/pipeline-runtime/blob/main/CHANGELOG.md"
+Issues = "https://github.com/cordata-tech/pipeline-runtime/issues"
 "Part 1" = "https://cordata.tech/en/blog/pipelines-as-descriptors"
 "Part 2" = "https://cordata.tech/en/blog/pipeline-half-openlineage-gx"
 
