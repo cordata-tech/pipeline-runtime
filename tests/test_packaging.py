@@ -12,9 +12,13 @@ these tests run against, does not map `pipeline_runtime.example` at all.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
+
+import yaml
 
 from pipeline_runtime import policy
 
@@ -25,6 +29,54 @@ EXECUTION = ("duckdb", "pandas", "numpy", "pyarrow", "great_expectations", "open
 def _fresh(code: str) -> subprocess.CompletedProcess[str]:
     # A fresh interpreter, because this one has already imported the stack.
     return subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=REPO)
+
+
+# ------------------------------------------------- the Python version, in three places
+
+
+def project() -> dict:
+    return tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+
+
+def classifier_versions() -> list[tuple[int, int]]:
+    found = [
+        c.removeprefix("Programming Language :: Python :: ")
+        for c in project()["classifiers"]
+        if c.startswith("Programming Language :: Python :: ")
+    ]
+    return sorted(tuple(int(part) for part in v.split(".")) for v in found if "." in v)
+
+
+def ci_versions() -> list[tuple[int, int]]:
+    workflow = yaml.safe_load((REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    declared = workflow["jobs"]["test"]["strategy"]["matrix"]["python-version"]
+    return sorted(tuple(int(part) for part in str(v).split(".")) for v in declared)
+
+
+def test_the_python_classifiers_are_the_versions_ci_runs():
+    """The README's python badge reads these classifiers off PyPI.
+
+    So they are a claim about which interpreters work, and the only evidence
+    for that claim is the CI matrix. A classifier CI does not exercise is a
+    promise nobody checks; a matrix entry with no classifier is work whose
+    result the badge hides.
+    """
+    assert classifier_versions() == ci_versions()
+
+
+def test_the_lowest_classifier_is_the_floor_requires_python_promises():
+    """`requires-python` is what pip enforces, the classifiers are what a reader
+    sees, and they have to start at the same version."""
+    spec = project()["requires-python"]
+    floor = re.fullmatch(r">=(\d+)\.(\d+)", spec)
+    assert floor, (
+        f"this test understands `>=X.Y` and requires-python is now {spec!r}; "
+        "extend the test rather than deleting it"
+    )
+    assert classifier_versions()[0] == (int(floor[1]), int(floor[2]))
+
+
+# ------------------------------------------------- what an install carries
 
 
 def test_model_and_policy_import_without_the_execution_stack():

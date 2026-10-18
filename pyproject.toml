@@ -10,6 +10,18 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 authors = [{ name = "Cordata", email = "hello@cordata.tech" }]
+# The versions CI actually runs. PyPI filters on these, and a `pypi/pyversions`
+# badge would read them once a release carries them — until then the README's
+# python badge reads `requires-python` straight from this file, because that
+# endpoint renders "missing" for a project with no classifiers.
+# `tests/test_packaging.py` fails if these, `requires-python` and the CI matrix
+# stop agreeing, since three copies of one fact need something holding them
+# together. No `License ::` classifier: PEP 639 says the `license` expression
+# above replaces it.
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
 # The base install is the descriptor model, the policy resolution and the
 # example data — what a tool reading the model needs (catalog-mcp,
 # cordata-tech/platform#26). Running a pipeline needs the `run` extra.
