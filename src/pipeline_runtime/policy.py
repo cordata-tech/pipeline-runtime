@@ -11,13 +11,21 @@ from __future__ import annotations
 import functools
 import json
 import os
+from importlib.resources import files
 from pathlib import Path
 
 from .errors import UnknownTagKey, UnknownTagValue
 
 
 def ontology_path() -> Path:
-    return Path(os.environ.get("CORDATA_ONTOLOGY", "example/ontology.json"))
+    if "CORDATA_ONTOLOGY" in os.environ:
+        return Path(os.environ["CORDATA_ONTOLOGY"])
+    local = Path("example/ontology.json")
+    if local.is_file():
+        return local
+    # An installed copy has no `example/` beside it, so it falls back to the one
+    # the wheel carries. A clone never reaches this line.
+    return Path(str(files("pipeline_runtime.example") / "ontology.json"))
 
 
 @functools.lru_cache(maxsize=1)

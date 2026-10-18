@@ -1,0 +1,18 @@
+# What card-ledger v4.12.0 publishes for fraud_raw.transactions: one nullable
+# column added. The same change `python -m tools.seed --drift` publishes, checked
+# before publishing instead of discovered after.
+#
+#   python -m pipeline_runtime.consumers example/proposals/card-ledger-v4.12.0.yml example/domains
+table: fraud_raw.transactions
+producer: card-ledger
+release: v4.12.0
+columns:
+  - {name: tx_id, type: VARCHAR, nullable: false, primary_key: true}
+  - {name: account_id, type: VARCHAR, nullable: false}
+  - {name: iban, type: VARCHAR, nullable: false}
+  - {name: amount_eur, type: DOUBLE, nullable: false}
+  - {name: currency, type: VARCHAR, nullable: false}
+  - {name: status, type: VARCHAR, nullable: false}
+  - {name: booked_at, type: TIMESTAMP, nullable: false}
+  - {name: merchant_id, type: VARCHAR, nullable: false}
+  - {name: merchant_category_code, type: VARCHAR, nullable: true}

@@ -223,20 +223,26 @@ part 1 § 2 rule 3 applied to the runtime itself.
 ## Installing it as a dependency
 
 ```
-pip install cordata-pipeline-runtime
+pip install cordata-pipeline-runtime          # the model, the policy, the example
+pip install 'cordata-pipeline-runtime[run]'   # and what running a pipeline needs
 ```
 
-That gives another tool the descriptor model (`pipeline_runtime.descriptor`),
-the executor and the policy resolution to depend on by name, which is what
-`catalog-mcp` does. **The name matters:** the bare `pipeline-runtime` on PyPI is
-an unrelated package, and a dependency line using it installs cleanly and fails
-at import.
+**The base install is for tools that read the model.** It carries the
+descriptor model (`pipeline_runtime.descriptor`), the policy resolution and the
+example descriptors and ontology, and depends on Pydantic and PyYAML only —
+which is what `catalog-mcp` builds on. **Running a pipeline needs `[run]`**:
+DuckDB, pandas, PyArrow, Great Expectations and the OpenLineage client. Without
+it, `pipeline-runtime` says which extra is missing rather than failing on an
+import. The quickstart's `.[dev]` includes it.
 
-The wheel does not carry `example/`, because the example descriptors stay
-byte-identical to the ones the articles publish and live with them in the
-repository. An installed copy reads its ontology and catalog from the
-variables above, whose defaults are the repository layout — so the quickstart
-still starts from a clone.
+**The name matters:** the bare `pipeline-runtime` on PyPI is an unrelated
+package, and a dependency line using it installs cleanly and fails at import.
+
+The example travels in the wheel as `pipeline_runtime.example`, read where it
+already is rather than copied, so it stays byte-identical to the descriptors the
+articles publish. A clone reads `example/` beside it as before; an installed
+copy with no `example/` beside it falls back to the one it carries.
+`CORDATA_ONTOLOGY` overrides both.
 
 ## Tests
 

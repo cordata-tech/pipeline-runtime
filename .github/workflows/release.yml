@@ -92,17 +92,40 @@ jobs:
       - run: python -m build
       - run: twine check dist/*
 
-      # Install the wheel into a clean environment, away from the checkout, and
-      # import it. Proves the published name installs the package a dependent
-      # will import — the reason the bare `pipeline-runtime` on PyPI, which is
-      # somebody else's, must never appear in a dependency line.
-      - name: The built wheel installs and imports on its own
+      # Install the wheel into clean environments, away from the checkout. The
+      # base install must carry the model, the policy and the example data
+      # without the execution stack; the `run` extra must make the CLI work.
+      # setuptools warns that the example's subdirectories are not declared as
+      # packages and may one day stop including them — the domain comparison
+      # below is what fails if that happens, rather than an empty release.
+      - name: The base install carries the model, the policy and the example
         run: |
-          python -m venv /tmp/clean
-          /tmp/clean/bin/pip install dist/*.whl
+          python -m venv /tmp/base
+          /tmp/base/bin/pip install dist/*.whl
           cd /tmp
-          /tmp/clean/bin/python -c "import pipeline_runtime, pipeline_runtime.descriptor, pipeline_runtime.policy; print('imports', pipeline_runtime.__version__)"
-          /tmp/clean/bin/pipeline-runtime --help > /dev/null
+          /tmp/base/bin/python - <<'PY'
+          import os, sys
+          from importlib.resources import files
+          import pipeline_runtime
+          from pipeline_runtime import descriptor, policy
+          heavy = [m for m in ("duckdb", "pandas", "great_expectations") if m in sys.modules]
+          assert not heavy, f"the model and policy imported {heavy}"
+          assert "pipeline_runtime/example" in str(policy.ontology_path()), policy.ontology_path()
+          packaged = sorted(p.name for p in (files("pipeline_runtime.example") / "domains").iterdir())
+          expected = sorted(os.listdir(os.path.join(os.environ["GITHUB_WORKSPACE"], "example", "domains")))
+          assert packaged == expected, f"wheel carries {packaged}, repository has {expected}"
+          print("base install", pipeline_runtime.__version__, "carries", packaged)
+          PY
+          ! /tmp/base/bin/pipeline-runtime example.yml 2> /tmp/cli-err.txt
+          grep -q 'cordata-pipeline-runtime\[run\]' /tmp/cli-err.txt
+
+      - name: The run extra makes the CLI work
+        run: |
+          python -m venv /tmp/full
+          WHEEL=$(ls dist/*.whl)
+          /tmp/full/bin/pip install "${WHEEL}[run]"
+          cd /tmp
+          /tmp/full/bin/pipeline-runtime --help > /dev/null
 
       - uses: actions/upload-artifact@v7
         with:

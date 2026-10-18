@@ -4,15 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cordata-pipeline-runtime"
-version = "0.1.0"
+version = "0.2.0"
 description = "Runnable reference implementation of the descriptor-driven pipeline executor"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 authors = [{ name = "Cordata", email = "hello@cordata.tech" }]
+# The base install is the descriptor model, the policy resolution and the
+# example data — what a tool reading the model needs (catalog-mcp,
+# cordata-tech/platform#26). Running a pipeline needs the `run` extra.
 dependencies = [
     "pydantic>=2.9",
     "pyyaml>=6",
+]
+
+[project.optional-dependencies]
+run = [
     "duckdb>=1.1",
     "pandas>=2.2",
     "numpy>=1.26",
@@ -20,10 +27,8 @@ dependencies = [
     "great_expectations>=1.0",
     "openlineage-python>=1.20",
 ]
-
-[project.optional-dependencies]
-test = ["pytest>=8"]
-dev = ["pytest>=8", "ruff>=0.6"]
+test = ["cordata-pipeline-runtime[run]", "pytest>=8"]
+dev = ["cordata-pipeline-runtime[run]", "pytest>=8", "ruff>=0.6"]
 
 [project.scripts]
 pipeline-runtime = "pipeline_runtime.__main__:main"
@@ -36,8 +41,19 @@ Issues = "https://github.com/cordata-tech/pipeline-runtime/issues"
 "Part 1" = "https://cordata.tech/en/blog/pipelines-as-descriptors"
 "Part 2" = "https://cordata.tech/en/blog/pipeline-half-openlineage-gx"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools]
+packages = ["pipeline_runtime", "pipeline_runtime.backends", "pipeline_runtime.example"]
+
+# `example/` is mapped into the wheel where it already is, not copied into
+# `src/`: its descriptors are byte-identical to the published ones, and a second
+# copy would be one more thing to keep in step. The seeded catalog and warehouse
+# are generated and git-ignored, so they stay out.
+[tool.setuptools.package-dir]
+"" = "src"
+"pipeline_runtime.example" = "example"
+
+[tool.setuptools.package-data]
+"pipeline_runtime.example" = ["ontology.json", "domains/**/*", "proposals/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -8,10 +8,21 @@ import uuid
 from pathlib import Path
 
 from .errors import PipelineError
-from .run import run
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Running a pipeline needs the `run` extra; reading the model does not. Say
+    # which one is missing rather than surfacing a bare ImportError for duckdb.
+    try:
+        from .run import run
+    except ModuleNotFoundError as exc:
+        print(
+            f"pipeline-runtime: running a pipeline needs {exc.name}. Install the "
+            "execution dependencies: pip install 'cordata-pipeline-runtime[run]'",
+            file=sys.stderr,
+        )
+        return 2
+
     ap = argparse.ArgumentParser(prog="pipeline-runtime", description=__doc__)
     ap.add_argument("descriptor", type=Path, help="path to a descriptor YAML")
     ap.add_argument(

@@ -1,0 +1,50 @@
+# domains/finance/pipelines/merchant_settlement.yml
+#
+# Written against cordata.tech/v2, which names both contracts where they apply:
+# source.contract is what this pipeline depends on upstream, target.contract is
+# what it promises downstream. Not one of part 1's published descriptors — those
+# stay v1, byte for byte.
+#
+# It reads the same table as fraud's transactions-scored-daily, so
+# fraud_raw.transactions has consumers in two domains. That pair is the list
+# `python -m pipeline_runtime.consumers` derives from the pins.
+apiVersion: cordata.tech/v2
+kind: TransformPipeline
+
+metadata:
+  name: merchant-settlement-daily
+  domain: finance
+  owner: finance-data@example.com
+
+source:
+  kind: glue_table
+  database: fraud_raw
+  table: transactions
+  contract:                          # what this pipeline depends on upstream
+    schema_version: 7
+
+steps:
+  - id: settle_by_merchant
+    kind: sql
+    query_file: sql/settle_by_merchant.sql
+
+target:
+  kind: parquet
+  database: finance_curated
+  table: merchant_settlement_daily
+  partition_by: [settlement_date]
+  location: "s3://cordata-finance-curated-eu-central-1/merchant_settlement_daily/"
+  contract:                          # what it promises downstream
+    freshness_sla: PT6H
+    lf_tags:
+      sensitivity: confidential
+      residency: eu
+      subject_type: none
+
+expectations:
+  suite: expectations/merchant_settlement.yml
+  on_failure: block_publish
+
+processing:
+  purpose: merchant-settlement
+  legal_basis: contract
