@@ -24,8 +24,13 @@ def ontology_path() -> Path:
     if local.is_file():
         return local
     # An installed copy has no `example/` beside it, so it falls back to the one
-    # the wheel carries. A clone never reaches this line.
-    return Path(str(files("pipeline_runtime.example") / "ontology.json"))
+    # the wheel carries. A clone never reaches this line. An editable install
+    # does not map `pipeline_runtime.example`, so there the local path is kept
+    # and `ontology()` reports it missing as it always has.
+    try:
+        return Path(str(files("pipeline_runtime.example") / "ontology.json"))
+    except ModuleNotFoundError:
+        return local
 
 
 @functools.lru_cache(maxsize=1)
