@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.1 — 2026-10-18
+
+Metadata and the README only; the code is identical to 0.2.0.
+
+The project page gains four badges — version, CI on `main`, the supported
+Python range and the licence — each reading live data rather than a number
+typed into the README, so a release cannot leave them stale.
+
+The distribution now carries `Programming Language :: Python :: 3.12` and
+`3.13` classifiers, which is what PyPI filters on and what a
+`pypi/pyversions` badge reads. Those versions are now written in three
+places — `requires-python`, the classifiers and the CI matrix — so
+`tests/test_packaging.py` asserts that the classifiers are exactly the
+versions CI runs and that the lowest one is the floor `requires-python`
+promises. This release exists so that the badge can read the classifiers
+instead of the file they come from (#6).
+
 ## 0.2.0 — 2026-10-18
 
 **Running a pipeline now needs the `run` extra: `pip install
