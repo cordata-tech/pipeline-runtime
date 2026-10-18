@@ -1,5 +1,10 @@
 # pipeline-runtime
 
+[![PyPI](https://img.shields.io/pypi/v/cordata-pipeline-runtime)](https://pypi.org/project/cordata-pipeline-runtime/)
+[![CI](https://github.com/cordata-tech/pipeline-runtime/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cordata-tech/pipeline-runtime/actions/workflows/ci.yml?query=branch%3Amain)
+[![Python](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fcordata-tech%2Fpipeline-runtime%2Fmain%2Fpyproject.toml&query=%24.project.requires-python&label=python)](https://pypi.org/project/cordata-pipeline-runtime/)
+[![Licence](https://img.shields.io/pypi/l/cordata-pipeline-runtime)](https://github.com/cordata-tech/pipeline-runtime/blob/main/LICENSE)
+
 A pipeline is a descriptor, not a program.
 
 This is the runnable version of the executor described in two posts on
