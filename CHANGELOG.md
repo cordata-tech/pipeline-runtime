@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.2 — unreleased
+## 0.2.2 — 2026-10-18
 
 **Two emitted identities change, so a lineage consumer that stored the old ones
 will see new datasets and new type names** (#7).
