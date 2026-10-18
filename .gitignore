@@ -16,3 +16,5 @@ out/
 # on purpose: a committed copy would be a second source of truth, free to drift
 # from the article it claims to mirror.
 tests/fixtures/published/
+build/
+dist/
