@@ -275,10 +275,11 @@ def test_a_pipeline_does_not_classify_the_table_it_read(emitted):
     """`contract.lf_tags` describe what this pipeline publishes.
 
     Copying them onto the input would assert a classification for someone
-    else's table that nobody checked — and the fraud source carries none in the
-    catalog, so the honest answer is no facet at all.
+    else's table that nobody checked. The fraud source carries only its owning
+    domain in the catalog, so that is all its facet says.
     """
-    assert "tags" not in emitted()[0]["inputs"][0]["facets"]
+    read = emitted()[0]["inputs"][0]["facets"]["tags"]["tags"]
+    assert {t["key"]: t["value"] for t in read} == {"domain": "fraud"}
 
 
 def test_a_source_the_catalog_has_classified_carries_that_classification(monkeypatch, tmp_path):
@@ -312,7 +313,7 @@ def test_a_source_the_catalog_has_classified_carries_that_classification(monkeyp
 
     event = json.loads(log.read_text().splitlines()[0])
     read = event["inputs"][0]["facets"]["tags"]["tags"]
-    assert {t["key"]: t["value"] for t in read} == upstream
+    assert {t["key"]: t["value"] for t in read} == {**upstream, "domain": "fraud"}
 
     written = event["outputs"][0]["facets"]["tags"]["tags"]
     assert {t["key"] for t in written} == set(load(FRAUD).contract.lf_tags), (
@@ -341,6 +342,66 @@ def test_the_namespace_is_the_domain_not_the_bucket(emitted):
     event = emitted()[0]
     assert event["job"]["namespace"] == f"cordata.{pipeline.metadata.domain}"
     assert event["inputs"][0]["namespace"] == f"cordata://{pipeline.metadata.domain}"
+
+
+def test_a_table_two_domains_read_is_one_dataset(emitted):
+    """#7: the input is named by the domain that owns it, not the one reading it.
+
+    Fraud and finance both read `fraud_raw.transactions`. OpenLineage takes
+    namespace plus name as a dataset's identity, so naming the input by the
+    reader made it two datasets, and a lineage graph lost finance's read.
+    """
+    from .paths import FINANCE
+
+    fraud = emitted(FRAUD)[0]["inputs"][0]
+    finance = emitted(FINANCE)[0]["inputs"][0]
+    assert (fraud["namespace"], fraud["name"]) == ("cordata://fraud", "fraud_raw.transactions")
+    assert (finance["namespace"], finance["name"]) == (fraud["namespace"], fraud["name"])
+
+
+def test_a_source_with_no_recorded_owner_is_attributed_to_the_reader_and_says_so(
+    monkeypatch, tmp_path
+):
+    """Without a `domain` tag the run knows only its own domain. It uses that
+    rather than failing, and says so in the trace, because a silent fallback is
+    exactly how the split in #7 went unnoticed."""
+    import io
+
+    from pipeline_runtime import catalog
+    from pipeline_runtime.trace import Trace
+
+    from .conftest import _seed, environment
+    from .paths import FINANCE
+
+    root = tmp_path / "unowned"
+    root.mkdir()
+    _seed(root)
+    log = tmp_path / "lineage.ndjson"
+    for key, value in {**environment(root), "CORDATA_LINEAGE_OUT": str(log)}.items():
+        if key.startswith("CORDATA_"):
+            monkeypatch.setenv(key, value)
+    with catalog.connect() as con:
+        con.execute("DELETE FROM _catalog.lf_tags WHERE tag_key = 'domain'")
+
+    out = io.StringIO()
+    run_id = str(uuid.uuid4())
+    run(FINANCE, run_id, Trace(run_id, stream=out))
+
+    event = json.loads(log.read_text().splitlines()[0])
+    assert event["inputs"][0]["namespace"] == "cordata://finance"
+    assert "no domain tag in the catalog; attributed to finance" in out.getvalue()
+
+
+def test_input_and_output_schemas_use_the_same_type_names(emitted):
+    """#7: outputs carried pandas dtype names (`STR`, `FLOAT64`) while inputs
+    carried the catalog's, so a column could not be followed from one to the
+    other by type."""
+    event = emitted()[0]
+    read = {f["name"]: f["type"] for f in event["inputs"][0]["facets"]["schema"]["fields"]}
+    written = {f["name"]: f["type"] for f in event["outputs"][0]["facets"]["schema"]["fields"]}
+    for column in ("tx_id", "iban", "amount_eur", "booked_at"):
+        assert written[column] == read[column], column
+    assert written["fraud_score"] == "DOUBLE"
 
 
 def test_datasets_report_the_shape_the_run_actually_saw(emitted):

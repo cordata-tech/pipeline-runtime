@@ -184,7 +184,9 @@ def dataset(
     The namespace is the domain rather than the storage account: under
     account-per-domain the same physical bucket can be reached by several
     identities, and lineage that keyed on the reacher would split one dataset
-    into several. The domain is the thing that stays the same.
+    into several. The domain is the thing that stays the same — provided it is
+    the domain that owns the table, so the caller passes the owner's for an
+    input, not its own.
 
     `TagsDatasetFacet` is a plain `DatasetFacet`, so unlike the quality facet in
     `docs/post-corrections.md` § 1 it belongs in `facets` and is defined for an
@@ -271,6 +273,10 @@ def emit(
 
     # 2. Datasets — what the run actually touched. A failed run touched nothing;
     #    a quarantined one wrote to quarantined(target), not the declared one.
+    #    The input is named by the domain that owns it, which the catalog records
+    #    as its `domain` tag, not by the domain reading it: a table two domains
+    #    read is one dataset, and naming it by the reader made it two (#7).
+    owner = (source_tags or {}).get("domain", domain)
     match status:
         case "FAIL":
             inputs, outputs = [], []
@@ -280,12 +286,12 @@ def emit(
             # less personal, and the side copy is the one somebody eventually
             # opens without the descriptor in front of them.
             inputs = [
-                dataset(pipeline.source, domain, source_columns, source_tags, cls=InputDataset)
+                dataset(pipeline.source, owner, source_columns, source_tags, cls=InputDataset)
             ]
             outputs = [dataset(quarantined(pipeline.target), domain, target_columns, tags)]
         case _:
             inputs = [
-                dataset(pipeline.source, domain, source_columns, source_tags, cls=InputDataset)
+                dataset(pipeline.source, owner, source_columns, source_tags, cls=InputDataset)
             ]
             outputs = [dataset(pipeline.target, domain, target_columns, tags)]
 

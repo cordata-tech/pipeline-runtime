@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.2 — unreleased
+
+**Two emitted identities change, so a lineage consumer that stored the old ones
+will see new datasets and new type names** (#7).
+
+An input dataset is now named by the domain that owns the table, read from the
+catalog's `domain` tag, instead of by the domain of the pipeline reading it.
+Before this, a table read by two domains was emitted under two namespaces — the
+finance pipeline's read of `fraud_raw.transactions` appeared as
+`cordata://finance` beside fraud's `cordata://fraud` — and OpenLineage treats
+those as two datasets. The published pipelines each read their own domain's
+table, so their input namespaces do not change. `tools.seed` records the owner
+of both source tables; a source with no `domain` tag falls back to the reader's
+domain, with a `lineage` trace line saying so.
+
+Output schema facets now use the catalog's type names (`VARCHAR`, `DOUBLE`,
+`TIMESTAMP`) instead of pandas dtype names (`STR`, `FLOAT64`,
+`DATETIME64[NS]`), so a column can be followed from an input to the output it
+fed. Inputs already used them.
+
+Inputs also gain a `tags` facet carrying that `domain` tag, because it is what
+the catalog now holds for them.
+
 ## 0.2.1 — 2026-10-18
 
 Metadata and the README only; the code is identical to 0.2.0.

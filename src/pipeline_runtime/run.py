@@ -142,9 +142,22 @@ def execute(
     # What the run actually saw, for the schema facets on the event. Reported
     # from the catalog and the frame rather than from the descriptor, so a
     # mismatch between declaration and reality shows up instead of being echoed.
+    # Both sides in the catalog's type names, so an input and the output it fed
+    # can be compared column for column (#7).
+    source_tags = catalog.tags_for(pipeline.source)
+    if "domain" not in source_tags:
+        # The input's lineage namespace is the domain that owns the table, and
+        # the catalog's `domain` tag is the record of that. Without it the run
+        # can only name its own domain, which splits the table's lineage if a
+        # second domain reads it — so say so where someone will see it.
+        trace(
+            "lineage",
+            pipeline.source.fqn,
+            f"no domain tag in the catalog; attributed to {pipeline.metadata.domain}",
+        )
     shapes = dict(
         source_columns=[(c.name, c.type) for c in schema.columns],
-        target_columns=[(str(n), str(t).upper()) for n, t in frame.dtypes.items()],
+        target_columns=catalog.frame_columns(frame),
         # Which application release published the version that was read. The
         # catalog answered this when the pin was checked; carrying it outward
         # is what extends the provenance chain past the pipeline's own commit.
@@ -152,7 +165,7 @@ def execute(
         # Classification, from the authority for each side: the contract for
         # what this run publishes, the catalog for what it read (#3).
         tags=tags,
-        source_tags=catalog.tags_for(pipeline.source),
+        source_tags=source_tags,
     )
 
     if not result.success:

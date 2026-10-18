@@ -162,6 +162,29 @@ _PANDAS_TYPES = {
 }
 
 
+# Precision is a property of the writer, not of the schema: pandas produces
+# nanosecond timestamps, and a Glue catalog records `timestamp` either way.
+_SAME_TYPE = {"TIMESTAMP_NS": "TIMESTAMP", "TIMESTAMP_US": "TIMESTAMP", "TIMESTAMP_MS": "TIMESTAMP"}
+
+
+def catalog_type(duck_type: str) -> str:
+    """A DuckDB type as the catalog records it."""
+    return _SAME_TYPE.get(duck_type.upper(), duck_type.upper())
+
+
+def frame_columns(frame: pd.DataFrame) -> list[tuple[str, str]]:
+    """A frame's columns in the catalog's type names, as publishing it would record them.
+
+    The same path `register` takes on write — DuckDB reads the frame and names
+    the types — so a schema facet built from this uses the vocabulary the
+    catalog and every input facet use, rather than pandas dtype names.
+    """
+    with duckdb.connect() as con:
+        con.register("_frame", frame)
+        rows = con.execute("DESCRIBE SELECT * FROM _frame").fetchall()
+    return [(name, catalog_type(kind)) for name, kind, *_ in rows]
+
+
 def _cast(series: pd.Series, duck_type: str) -> pd.Series:
     target = _PANDAS_TYPES.get(duck_type.upper())
     if target is None:

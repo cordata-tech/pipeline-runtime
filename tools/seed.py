@@ -22,7 +22,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from pipeline_runtime import catalog  # noqa: E402
+from pipeline_runtime import catalog, policy  # noqa: E402
 from pipeline_runtime.backends.local import warehouse  # noqa: E402
 from pipeline_runtime.descriptor import TableRef  # noqa: E402
 
@@ -63,6 +63,14 @@ TRANSACTIONS_RELEASES = {7: "v4.11.0", 8: "v4.12.0"}
 CLAIMS = TableRef(database="policy_raw", table="claims")
 CLAIMS_PRODUCER = "claims-portal"
 CLAIMS_RELEASES = {3: "v2.3.0"}
+
+# Which domain owns each source table, as the governance plane records it: the
+# `domain` LF-tag, which the reference Terraform assigns to each domain's
+# databases and Lake Formation passes down to their tables. Only `domain`,
+# because classifying an application's table is its owner's decision, not the
+# seed's. A run names its input by this, so a table two domains read stays one
+# dataset in the lineage (#7).
+OWNERS = [(TRANSACTIONS, "fraud"), (CLAIMS, "policy")]
 
 
 def ibans(rng: np.random.Generator, n: int) -> np.ndarray:
@@ -145,6 +153,19 @@ def forget(con, ref: TableRef) -> None:
         )
 
 
+def own(con, ref: TableRef, domain: str) -> None:
+    """Record which domain owns a table, checked against the ontology like any tag."""
+    policy.resolve({"domain": domain})
+    con.execute(
+        "DELETE FROM _catalog.lf_tags WHERE database = ? AND \"table\" = ? AND tag_key = 'domain'",
+        [ref.database, ref.table],
+    )
+    con.execute(
+        "INSERT INTO _catalog.lf_tags VALUES (?, ?, 'domain', ?)",
+        [ref.database, ref.table, domain],
+    )
+
+
 def publish(con, ref: TableRef, columns: list[tuple], version: int, producer: str, release: str):
     catalog.publish(
         con,
@@ -189,6 +210,8 @@ def main(argv: list[str] | None = None) -> int:
             con, TRANSACTIONS, TRANSACTIONS_V7, 7, TRANSACTIONS_PRODUCER, TRANSACTIONS_RELEASES[7]
         )
         publish(con, CLAIMS, CLAIMS_V3, 3, CLAIMS_PRODUCER, CLAIMS_RELEASES[3])
+        for ref, domain in OWNERS:
+            own(con, ref, domain)
 
         if args.drift:
             # The column exists in the catalog *and* in the data, because that

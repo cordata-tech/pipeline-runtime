@@ -154,24 +154,11 @@ def _publish(frame: pd.DataFrame, target: Target, tags: dict[str, str]) -> None:
     schema = Schema(
         version=version,
         columns=tuple(
-            catalog.Column(name=n, type=_duck_type(t), nullable=(nul == "YES"))
+            catalog.Column(name=n, type=catalog.catalog_type(t), nullable=(nul == "YES"))
             for n, t, nul in cols
         ),
     )
     catalog.register(target, schema, tags)
-
-
-def _duck_type(t: str) -> str:
-    return {
-        "VARCHAR": "VARCHAR",
-        "BIGINT": "BIGINT",
-        "INTEGER": "INTEGER",
-        "DOUBLE": "DOUBLE",
-        "BOOLEAN": "BOOLEAN",
-        "DATE": "DATE",
-        "TIMESTAMP": "TIMESTAMP",
-        "TIMESTAMP_NS": "TIMESTAMP",
-    }.get(t.upper(), t.upper())
 
 
 # Two names, one body, on purpose. `iceberg` and `parquet` are genuinely

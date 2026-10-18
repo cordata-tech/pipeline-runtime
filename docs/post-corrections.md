@@ -204,3 +204,24 @@ The reasoning, and the two alternatives it was chosen over, are on
 `tests/test_lineage.py` holds both directions, and
 `test_the_facet_matches_the_schema_it_publishes` holds `schemas/provenance.json`
 to whatever the facet actually emits.
+
+### An input is named by the domain that owns it — 2026-10-18
+
+Part 2 § 4 says the namespace comes from the descriptor's metadata, and for both
+published pipelines it still produces the same value: each reads its own
+domain's table, so the reader's domain and the owner's coincide. The finance
+pipeline added since reads fraud's `fraud_raw.transactions`, and naming its input
+by the reader emitted that table under `cordata://finance` as well as
+`cordata://fraud`. OpenLineage takes namespace plus name as a dataset's
+identity, so one table became two, and a lineage graph lost finance's read —
+the split `emit.dataset()`'s own docstring says the domain namespace exists to
+prevent.
+
+An input's namespace now comes from the catalog's `domain` tag for the table,
+the governance plane's record of who owns it, which `tools.seed` writes for both
+source tables. Without one, the run falls back to its own domain and prints a
+`lineage` trace line saying so. Output schema facets changed in the same
+release: they carried pandas dtype names (`STR`, `FLOAT64`), and now carry the
+catalog's type names, as inputs always did. Both are on
+[#7](https://github.com/cordata-tech/pipeline-runtime/issues/7), and
+`tests/test_lineage.py` holds them.
