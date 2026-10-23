@@ -1,9 +1,11 @@
 # Where this repo and the articles disagreed
 
 Building the runnable version turned up five places where the published posts
-were wrong, incomplete, or would not run as written. They are listed here rather
-than quietly fixed in the code, because a reference repo that silently departs
-from the article it references is the thing it exists to prevent.
+were wrong, incomplete, or would not run as written, and a sixth turned up in
+October when the code the article got right and this repo got wrong was finally
+run. They are listed here rather than quietly fixed in the code, because a
+reference repo that silently departs from the article it references is the thing
+it exists to prevent.
 
 Each entry says what the article said, what is actually true, how it was
 verified, and where it stands now.
@@ -15,9 +17,11 @@ verified, and where it stands now.
 | [3](#3-the-openlineage-client-already-ships-a-datazone-transport) | part 2 § 2 | **fixed 2026-08-13** |
 | [4](#4-the-trace-shows-expect-before-policy-the-code-resolves-policy-first) | part 1 § 3 | open, cosmetic |
 | [5](#5-dedupe_cdc-reads-as-redundant-next-to-collapse_cdc) | part 1 § 2, § 3 | **fixed 2026-08-13** |
+| [6](#6-replace-in-the-validation-job-is-not-dataclassesreplace) | part 2 § 4 | **fixed 2026-10-23** |
 
 Verified against `openlineage-python 1.52.0`, `openlineage-integration-common`,
-`great_expectations 1.20.0` and the OpenLineage 2-0-2 spec on 2026-08-13.
+`great_expectations 1.20.0` and the OpenLineage 2-0-2 spec on 2026-08-13; § 6
+against `openlineage-python 1.52.0` and `attrs 26.1.0` on 2026-10-23.
 
 ---
 
@@ -175,9 +179,51 @@ the domain can define. The ownership line in § 7 runs between them.
 
 ---
 
+## 6. `replace` in the validation job is not `dataclasses.replace`
+
+The article's design was right and this repo did not follow it; the one line of
+the article that is wrong is the name of the function.
+Corrected in both language versions on 2026-10-23.
+
+Part 2 § 4 builds the validation event's job from the pipeline's:
+
+```python
+job = (replace(job, name=f"{job.name}.validate"),)
+```
+
+and the prose beneath the listing says `replace` is `dataclasses.replace`. It
+cannot be. The client's event classes are attrs classes rather than dataclasses,
+so `dataclasses.replace(job, name=…)` raises `TypeError: replace() should be
+called on dataclass instances`. The equivalent that works is `attr.evolve`,
+which this repo already imports for its own two facet classes:
+
+```python
+job = (attr.evolve(job, name=f"{job.name}.validate"),)
+```
+
+Checked on 2026-10-23 against `openlineage-python 1.52.0`:
+`attr.has(type(job))` is `True` and `dataclasses.is_dataclass(job)` is `False`
+for `openlineage.client.event_v2.Job`, and the `TypeError` above is what
+`dataclasses.replace` actually raises on one.
+
+**What the repo did until 0.2.4**, which is the larger half of this entry.
+`emit.py` built the validation job from scratch — `Job(namespace=…,
+name=f"{pipeline.metadata.name}.validate")` — so it carried no job facets, and
+the `processing` facet that part 2 § 1 puts on the pipeline's job travelled only
+on the terminal event. An Art. 30 record built from the events then listed every
+`.validate` job as an activity with no purpose and no legal basis: `qedro` 0.7.0
+over `pipeline-runtime demo` output reported *3 of 6 activities have no purpose
+or no legal basis from any source* and withheld the record's mark. Since 0.2.4
+the job is the pipeline's with a different name, as the article always said, and
+`tests/test_lineage.py` holds every event a run emits to the same facet. The
+reasoning, and the alternative of declaring a separate purpose for validation,
+are on [#9](https://github.com/cordata-tech/pipeline-runtime/issues/9).
+
+---
+
 ## Later additions — not corrections
 
-The five above are places the articles were wrong. This section is for fields
+The six above are places the articles were wrong. This section is for fields
 the articles gained afterwards, where nothing they said stopped being true. It
 exists so a reader who read a post earlier can see what moved, and so the repo
 and the article can be checked against each other without the difference

@@ -311,13 +311,23 @@ def emit(
     #    dataset that was actually tested. `OTHER` because part 1 § 3 guarantees exactly one
     #    *terminal* event per run and this is not it — the spec reserves OTHER
     #    for exactly this, additional metadata accumulating against a runId.
+    #
+    #    The job is the pipeline's with a different name, so the `processing`
+    #    facet travels with it: checking a pipeline's output is part of the same
+    #    processing activity, and the purpose and legal basis that justify
+    #    writing the rows justify checking them (#9). Built from scratch, as it
+    #    was until 0.2.3, it carried no facets, and an Art. 30 record rebuilt
+    #    from the events listed every `.validate` job as an activity with no
+    #    declared purpose. `attr.evolve` rather than part 2 § 4's
+    #    `dataclasses.replace`, which does not work here; see
+    #    `docs/post-corrections.md` § 6.
     if result is not None:
         tested = quarantined(pipeline.target) if status == "QUARANTINED" else pipeline.target
         assertions = RunEvent(
             eventType=RunState.OTHER,
             eventTime=now_utc_iso(),
             run=Run(runId=run_id, facets={}),
-            job=Job(namespace=f"cordata.{domain}", name=f"{pipeline.metadata.name}.validate"),
+            job=attr.evolve(job, name=f"{job.name}.validate"),
             inputs=[
                 dataset(
                     tested,

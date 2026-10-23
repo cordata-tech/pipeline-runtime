@@ -253,6 +253,32 @@ def test_art_30_fields_travel_as_a_job_facet(emitted):
     assert facet["legal_basis"] == pipeline.processing.legal_basis
 
 
+def test_every_event_a_run_emits_carries_the_same_processing_facet(emitted):
+    """The validation job is the pipeline's job under a longer name.
+
+    Checking a pipeline's output is part of the same processing activity — the
+    purpose and lawful basis that justify writing the rows justify checking
+    them — so the assertion event inherits the facet rather than declaring
+    nothing. Built from scratch, as it was until 0.2.3, the `.validate` job
+    carried no facets at all, and an Art. 30 record rebuilt from the events
+    listed it as an activity with no purpose and no legal basis (#9).
+    """
+    pipeline = load(CLAIMS)
+    events = emitted(CLAIMS)
+
+    assert len(events) > 1
+    assert {e["job"]["name"] for e in events} == {
+        pipeline.metadata.name,
+        f"{pipeline.metadata.name}.validate",
+    }
+    assert len({e["job"]["namespace"] for e in events}) == 1
+
+    facets = [e["job"]["facets"]["processing"] for e in events]
+    assert all(f == facets[0] for f in facets)
+    assert facets[0]["purpose"] == pipeline.processing.purpose
+    assert facets[0]["legal_basis"] == pipeline.processing.legal_basis
+
+
 def test_the_resolved_tags_travel_on_the_dataset_they_classify(emitted):
     """Part 1 § 6's tags, resolved against the ontology and then emitted.
 
