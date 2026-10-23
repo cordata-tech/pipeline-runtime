@@ -20,7 +20,26 @@ described. So: no cloud account, no credentials, two commands.
 
 ## Five-minute quickstart
 
-Python **3.12+** (the code uses `match` and PEP 695 `type` aliases).
+Python **3.12+** (the code uses `match` and PEP 695 `type` aliases). No cloud
+account, no credentials, no clone:
+
+```bash
+pip install 'cordata-pipeline-runtime[run]'
+
+mkdir demo && cd demo
+pipeline-runtime demo .          # seed the example, then run all three pipelines
+```
+
+`demo` writes three things into the directory you give it and nowhere else: the
+local catalog (`catalog.duckdb`), the warehouse the `s3://…` locations land in,
+and `out/lineage.ndjson` holding every event the runs emitted. It refuses a
+directory holding files it did not write, so point it at an empty one.
+
+To run one pipeline at a time, `pipeline-runtime` takes the path of any
+descriptor — including the three the wheel carries, under
+`pipeline_runtime/example/domains/` in site-packages.
+
+In a clone, which is the route for contributors, the same two steps are:
 
 ```bash
 git clone https://github.com/cordata-tech/pipeline-runtime && cd pipeline-runtime

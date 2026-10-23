@@ -127,6 +127,28 @@ jobs:
           cd /tmp
           /tmp/full/bin/pipeline-runtime --help > /dev/null
 
+      # The quickstart the README now opens with, from the wheel and away from
+      # the checkout: a release whose own demo cannot run does not publish. The
+      # test suite cannot cover this, because an editable install maps no
+      # `pipeline_runtime.example` and so never reads the packaged descriptors.
+      - name: The wheel can run its own demo, with no checkout
+        run: |
+          mkdir -p /tmp/demo
+          cd /tmp/demo
+          /tmp/full/bin/pipeline-runtime demo .
+          test -s catalog.duckdb
+          test -s out/lineage.ndjson
+          test "$(grep -c '"eventType": *"COMPLETE"' out/lineage.ndjson)" = 3
+          grep -q 'cordata://fraud' out/lineage.ndjson
+
+      - name: And it refuses a directory that is somebody else's
+        run: |
+          mkdir -p /tmp/not-ours && touch /tmp/not-ours/thesis.pdf
+          cd /tmp
+          ! /tmp/full/bin/pipeline-runtime demo /tmp/not-ours 2> /tmp/demo-err.txt
+          grep -q 'thesis.pdf' /tmp/demo-err.txt
+          test ! -e /tmp/not-ours/catalog.duckdb
+
       - uses: actions/upload-artifact@v7
         with:
           name: dist
