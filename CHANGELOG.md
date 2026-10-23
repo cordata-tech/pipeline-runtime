@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.2.5 — 2026-10-23
+
+Two things a consumer reads off the wire change, both found by `qedro` reading
+the 0.2.4 capture rather than by a test here.
+
+**The assertion event's input now carries the contract's `tags` facet** (#10).
+The dataset it names is this pipeline's own target, written and classified one
+event earlier, so it arrived classified on the terminal event and unclassified
+on the assertion event, and a consumer counting datasets per activity called
+the pipeline's own output unclassified. `dataset()` still withholds tags from a
+table the pipeline merely read — that classification is not this descriptor's
+to assert — which is the same rule rather than an exception to it. Measured over
+`pipeline-runtime demo` output with `qedro` 0.7.0: Art. 30(1)(c) and (e) are now
+reported for 6 of 6 activities instead of 3, and 2 of 5 datasets are
+unclassified instead of 5 — the two left are the raw source tables, which no
+pipeline here claims to classify.
+
+**`descriptor_git_commit_signed` is absent, not `false`, when no commit was
+found** (#11). A run from an installed copy has no repository, so
+`descriptor_git_commit` was already dropped on the way out while the flag beside
+it serialised as `false` — a negative signature verdict about a commit nothing
+named, which `qedro` reported as a step that *"ran under a commit that was
+reported as not signed"*. The two fields now travel together or not at all, and
+`schemas/provenance.json` says so as `dependentRequired` rather than listing the
+flag in `required`. A consumer that stored `false` for runs outside a checkout
+will stop receiving it; `descriptor_sha256` still proves which bytes ran.
+
+`descriptor_path` is a third finding from the same reading, left open as #12: it
+is whatever path the caller passed, while the schema promises one relative to
+the repository root, and from an installed copy it carries the host's
+filesystem layout. Changing it changes a value every stored event carries, so it
+gets its own release.
+
 ## 0.2.4 — 2026-10-23
 
 **The validation event's job now carries the pipeline's `processing` facet, so a

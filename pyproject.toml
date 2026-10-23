@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cordata-pipeline-runtime"
-version = "0.2.4"
+version = "0.2.5"
 description = "Runnable reference implementation of the descriptor-driven pipeline executor"
 readme = "README.md"
 license = "MIT"
