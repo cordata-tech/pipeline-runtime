@@ -217,6 +217,54 @@ def test_a_blocked_publish_still_names_the_release_it_read(env, events, scenario
     assert facet["source_published_release"] == "v4.11.0"
 
 
+def test_the_signature_verdict_never_travels_without_a_commit(env, events, scenario):
+    """A verdict with nothing to attach it to is worse than no verdict.
+
+    Until 0.2.4 a run from outside a checkout emitted no `descriptor_git_commit`
+    — the client drops a None — beside `descriptor_git_commit_signed: false`,
+    which a consumer can only read as a commit reported unsigned. `qedro` read
+    it exactly that way. The scenario fixture copies the domain into a
+    directory that is not a repository, which is what an installed copy looks
+    like from here (#11).
+    """
+    run(scenario(FRAUD), str(uuid.uuid4()))
+    outside = events()[0]["run"]["facets"]["cordata_provenance"]
+    assert "descriptor_git_commit" not in outside
+    assert "descriptor_git_commit_signed" not in outside
+    assert outside["descriptor_sha256"], "which bytes ran is still known"
+
+    run(FRAUD, str(uuid.uuid4()))
+    named = [
+        e["run"]["facets"]["cordata_provenance"]
+        for e in events()
+        if "cordata_provenance" in e["run"]["facets"]
+    ][-1]
+    assert named["descriptor_git_commit"]
+    assert isinstance(named["descriptor_git_commit_signed"], bool), (
+        "whether it verified depends on the signer's keys; that it is reported does not"
+    )
+
+
+def test_a_dataset_carries_the_same_classification_in_every_event_naming_it(emitted):
+    """The target appears twice in a run — written, then tested.
+
+    It arrived classified on the terminal event's output and unclassified on
+    the assertion event's input, so a consumer counting datasets per activity
+    called its own output unclassified (#10). Asserted as the general property
+    rather than on the one pair, so a third event cannot reintroduce the split.
+    """
+    seen: dict[tuple[str, str], list] = {}
+    for event in emitted():
+        for ref in (*event["inputs"], *event["outputs"]):
+            seen.setdefault((ref["namespace"], ref["name"]), []).append(ref["facets"].get("tags"))
+
+    repeated = {ref: facets for ref, facets in seen.items() if len(facets) > 1}
+    assert repeated, "the target is written and then tested, so it appears in two events"
+    for ref, facets in repeated.items():
+        assert all(facet == facets[0] for facet in facets), ref
+        assert facets[0] is not None, ref
+
+
 def test_the_facet_matches_the_schema_it_publishes(emitted):
     """`schemas/provenance.json` is the contract the facet's `_schemaURL` points
     at, so a field on one and not the other is a broken promise to a consumer.

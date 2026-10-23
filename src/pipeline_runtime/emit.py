@@ -86,7 +86,11 @@ class ProvenanceRunFacet(RunFacet):
     source_table: str
     source_schema_version: int
     descriptor_git_commit: str | None
-    descriptor_git_commit_signed: bool
+    # Absent, like the two fields below, when no commit was found: `false` would
+    # report a commit as unsigned, and there is no commit. The two move
+    # together, which `schemas/provenance.json` states as `dependentRequired`
+    # rather than as a comment nobody downstream reads (#11).
+    descriptor_git_commit_signed: bool | None
     executor_version: str
     step_params: dict[str, dict[str, str]]
     # The application release behind the source version this run read. Unset
@@ -138,7 +142,7 @@ def provenance_facet(
     )
 
 
-def _git_provenance(path: Path) -> tuple[str | None, bool]:
+def _git_provenance(path: Path) -> tuple[str | None, bool | None]:
     """The commit that last touched this descriptor, and whether it was signed.
 
     `descriptor_sha256` alone proves which bytes ran, not that those bytes were
@@ -148,8 +152,10 @@ def _git_provenance(path: Path) -> tuple[str | None, bool]:
     `allowed_signers`. A run whose provenance points at an unsigned commit is
     itself a finding.
 
-    Returns `(None, False)` outside a repository. Absence of provenance is not
-    the same as bad provenance, and an auditor reading `null` knows to ask.
+    Returns `(None, None)` outside a repository, so neither key reaches the
+    wire. Absence of provenance is not the same as bad provenance, and until
+    0.2.4 this returned `(None, False)` — a negative signature verdict about a
+    commit nothing named, which a consumer could only read as a finding (#11).
     """
     try:
         out = subprocess.run(
@@ -161,9 +167,9 @@ def _git_provenance(path: Path) -> tuple[str | None, bool]:
             check=True,
         ).stdout.split()
     except (subprocess.SubprocessError, OSError):
-        return None, False
+        return None, None
     if len(out) < 2:
-        return None, False
+        return None, None
     return out[0], out[1] == "G"
 
 
@@ -333,6 +339,14 @@ def emit(
                     tested,
                     domain,
                     target_columns,
+                    # The contract's own tags, as the terminal event's output
+                    # carries them. `dataset()` withholds them from an input
+                    # because classifying a table this pipeline merely read is
+                    # not its descriptor's to assert — and this input is the
+                    # table it just wrote, so the rule is applied rather than
+                    # broken. Without them one dataset arrived classified in
+                    # one event of a run and unclassified in the next (#10).
+                    tags,
                     cls=InputDataset,
                     inputFacets={"dataQualityAssertions": result.as_facet()},
                 )
