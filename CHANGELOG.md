@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.3 — 2026-10-23
+
+**The quickstart no longer needs a clone.** `pipeline-runtime demo DIR` seeds the
+example — the local catalog, the two source tables and the DMS batches — and then
+runs all three pipelines against it, writing the catalog, the warehouse and
+`out/lineage.ndjson` into `DIR` and nowhere else. Since 0.2.0 the descriptors
+travelled in the wheel while the data they read did not, so every walkthrough
+still began with `git clone`; the seeding code now lives in the package as
+`pipeline_runtime.seed`, which is what `demo` calls (#8).
+
+It refuses a directory holding anything it did not write, naming the files, and
+without the `run` extra it names the missing extra the way a pipeline run already
+does. `tools/seed.py` keeps working, `--drift` included, as a wrapper over the
+moved code — CI, the tests and the README's drift scenario all call it.
+
+The release workflow now installs the wheel into a clean environment and runs
+`demo` there, so a release whose own demo cannot run does not publish. The test
+suite cannot cover that path: an editable install maps no
+`pipeline_runtime.example`, so only a built wheel reads the packaged descriptors.
+
 ## 0.2.2 — 2026-10-18
 
 **Two emitted identities change, so a lineage consumer that stored the old ones
