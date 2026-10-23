@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.4 — 2026-10-23
+
+**The validation event's job now carries the pipeline's `processing` facet, so a
+record rebuilt from events emitted before this release changes** (#9). Until
+now the `OTHER` event carrying the assertion result built its job from scratch,
+`<name>.validate` with no facets at all, and the purpose and legal basis the
+descriptor declares travelled only on the terminal event. Read by `qedro` 0.7.0
+over `pipeline-runtime demo` output, three of the six activities in the Art. 30
+record came out with no purpose and no legal basis, and the record withheld its
+mark on that count; they now carry both, and the only line it still withholds
+for is the undeclared controller, which is the reader's to set.
+
+The validation job is the pipeline's job with a longer name, because checking a
+pipeline's output is part of the same processing activity: the purpose and
+lawful basis that justify writing the rows justify checking them. The
+alternative — a distinct declared purpose for validation — would have the
+runtime assert something no descriptor says, and is argued on the issue.
+
+This is the shape part 2 § 4 published from the start, so the repository was the
+one that diverged. The article's own spelling of it does not run, though:
+`dataclasses.replace` raises `TypeError` on the client's `Job`, which is an
+attrs class, and `attr.evolve` is the equivalent that works.
+`docs/post-corrections.md` § 6 has the working.
+
 ## 0.2.3 — 2026-10-23
 
 **The quickstart no longer needs a clone.** `pipeline-runtime demo DIR` seeds the
