@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 from pipeline_runtime import catalog
-from pipeline_runtime.demo import OURS, demo, descriptors, unexpected
+from pipeline_runtime.demo import OURS, demo, descriptors, example_root, unexpected
 
 from .paths import REPO
 
@@ -30,7 +30,9 @@ def ran(tmp_path, monkeypatch) -> Path:
     """One demo run into an empty directory, with the environment it sets kept."""
     for key in ("CORDATA_CATALOG", "CORDATA_WAREHOUSE", "CORDATA_LINEAGE_OUT"):
         monkeypatch.delenv(key, raising=False)
-    monkeypatch.chdir(REPO)  # a clone, so `example/` is the descriptor source
+    # Deliberately not the repository: the descriptors are found from the
+    # module's own location, so the command works wherever it is run (#14).
+    monkeypatch.chdir(tmp_path)
 
     target = tmp_path / "demo"
     assert demo(target, out=io.StringIO()) == 0
@@ -40,6 +42,23 @@ def ran(tmp_path, monkeypatch) -> Path:
 def events(target: Path) -> list[dict]:
     log = target / "out" / "lineage.ndjson"
     return [json.loads(line) for line in log.read_text().splitlines() if line.strip()]
+
+
+def test_the_example_is_found_from_the_module_not_the_working_directory(tmp_path, monkeypatch):
+    """The command is pointed at a directory, so it cannot depend on being in one.
+
+    An editable install maps no `pipeline_runtime.example`, and the fallback was
+    the relative `Path("example")` — so `demo` worked only from the repository
+    root and failed in a clone with a message claiming the install was missing
+    part of its example (#14). This suite ran green throughout, because its
+    fixture chdir'd to the repository first.
+    """
+    monkeypatch.chdir(tmp_path)
+
+    root = example_root()
+    assert root.is_absolute()
+    assert root.is_dir()
+    assert len(descriptors()) == 3
 
 
 def test_it_writes_a_catalog_a_warehouse_and_the_events(ran):

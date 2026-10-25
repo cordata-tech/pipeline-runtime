@@ -45,13 +45,35 @@ def example_root() -> Path:
 
     `pyproject.toml` maps the package at the repository's `example/` rather than
     copying it, so a clone and an install read the same bytes. An editable
-    install maps no such package, and falls back to the path a clone has.
+    install maps no such package, and the source tree keeps `example/` beside
+    the package rather than inside it — so the fallback is found from this
+    module's own location.
+
+    It used to be the relative `Path("example")`, which resolved only when the
+    working directory happened to be the repository root, while `demo` exists to
+    be pointed at some other directory. So the command failed in a clone, which
+    is the one place a contributor runs it, and the test fixture chdir'd to the
+    repository to work around it (#14). Searching upward from the working
+    directory would be the wrong repair: inside somebody else's checkout it
+    would find their `example/`.
     """
+    candidates = []
     try:
         inside = files("pipeline_runtime.example") / "ontology.json"
     except ModuleNotFoundError:
-        return Path("example")
-    return Path(str(inside)).parent
+        pass
+    else:
+        candidates.append(Path(str(inside)).parent)
+    candidates.append(Path(__file__).resolve().parents[2] / "example")
+
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    raise FileNotFoundError(
+        "no example/ directory: looked in "
+        + ", ".join(str(c) for c in candidates)
+        + " — an installed copy carries its own, and a clone has one beside the package"
+    )
 
 
 def descriptors() -> list[Path]:

@@ -18,6 +18,7 @@ import sys
 import tomllib
 from pathlib import Path
 
+import pytest
 import yaml
 
 from pipeline_runtime import policy
@@ -111,14 +112,49 @@ def test_with_no_example_beside_it_the_packaged_ontology_is_used(tmp_path, monke
     assert policy.ontology_path() == packaged / "ontology.json"
 
 
-def test_without_a_packaged_copy_the_missing_file_is_reported(tmp_path, monkeypatch):
-    def unmapped(_package):
-        raise ModuleNotFoundError("pipeline_runtime.example")
+def _unmapped(_package):
+    raise ModuleNotFoundError("pipeline_runtime.example")
 
-    monkeypatch.setattr(policy, "files", unmapped)
+
+def test_without_a_packaged_copy_the_source_tree_beside_the_package_is_used(tmp_path, monkeypatch):
+    """An editable install, run from anywhere — which is the #14 case.
+
+    This used to assert the relative `example/ontology.json`, and so recorded
+    the defect: from a working directory that was not the repository root, a
+    path that does not resolve was returned and the ontology was reported
+    missing while it sat beside the package.
+    """
+    monkeypatch.setattr(policy, "files", _unmapped)
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CORDATA_ONTOLOGY", raising=False)
+
+    chosen = policy.ontology_path()
+    assert chosen.is_absolute()
+    assert chosen.is_file()
+    assert policy.ontology(), "and it is readable, not merely present"
+
+
+def test_with_no_example_anywhere_the_missing_file_is_still_reported(tmp_path, monkeypatch):
+    """The genuine failure, now that the source tree is a candidate.
+
+    Neither a packaged copy nor an `example/` beside the package: the relative
+    path comes back and `ontology()` says what is missing and how to point at
+    one, which is the behaviour a deployment relies on, since there the
+    vocabulary is the governance account's rather than a file in this tree.
+    """
+    from pipeline_runtime import demo
+
+    def missing() -> Path:
+        raise FileNotFoundError("no example/ directory")
+
+    monkeypatch.setattr(policy, "files", _unmapped)
+    monkeypatch.setattr(demo, "example_root", missing)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CORDATA_ONTOLOGY", raising=False)
+
     assert policy.ontology_path() == Path("example/ontology.json")
+    with pytest.raises(FileNotFoundError, match="CORDATA_ONTOLOGY"):
+        policy.ontology()
 
 
 def test_the_cli_names_the_missing_extra():

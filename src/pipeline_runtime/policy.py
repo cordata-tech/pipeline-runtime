@@ -24,12 +24,21 @@ def ontology_path() -> Path:
     if local.is_file():
         return local
     # An installed copy has no `example/` beside it, so it falls back to the one
-    # the wheel carries. A clone never reaches this line. An editable install
-    # does not map `pipeline_runtime.example`, so there the local path is kept
-    # and `ontology()` reports it missing as it always has.
+    # the wheel carries.
     try:
         return Path(str(files("pipeline_runtime.example") / "ontology.json"))
     except ModuleNotFoundError:
+        pass
+    # An editable install maps no `pipeline_runtime.example`, and until 0.2.6
+    # this returned the relative path above, so a run whose working directory
+    # was not the repository root reported the ontology missing when it was
+    # beside the package all along (#14). Imported here rather than at the top:
+    # the resolution belongs to the example, and `policy` is read by every run.
+    from .demo import example_root
+
+    try:
+        return example_root() / "ontology.json"
+    except FileNotFoundError:
         return local
 
 
