@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.9 — 2026-10-25
+
+**A table's readers can be listed from the base install**, with the new
+`pipeline_runtime.pins` module (catalog-mcp#2). `pins.readers(ref, paths)`
+returns every descriptor under `paths` whose source names the table, each
+parsed into the shape the executor runs, or, when a descriptor names the table
+but does not parse, its path and the first line of the error. It is the list
+`python -m pipeline_runtime.consumers` reports on, and that command now builds
+its report from this function instead of scanning the paths itself.
+
+The split was needed because `consumers` imports the catalog and the executor
+for its comparison against a proposed version, so importing it at all needed
+the whole `run` extra — great_expectations, openlineage-python, pandas, pyarrow
+and DuckDB — even for a caller that only wanted the list. catalog-mcp serves
+that list as a tool and installs no execution stack, so it would otherwise have
+had to write the matching rule a second time.
+
+Descriptor parsing moved with it: `MODELS`, `parse()` and `load()` now live in
+`pins`, and `run` re-exports `parse` and `load`, so
+`from pipeline_runtime.run import load` keeps working. `tests/test_packaging.py`
+now also holds `pins` to importing without the execution stack.
+
 ## 0.2.8 — 2026-10-25
 
 **The job now carries the standard `sourceCodeLocation` facet, so the commit a
