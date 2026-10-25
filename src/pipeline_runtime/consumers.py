@@ -30,18 +30,15 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 from pydantic import Field, ValidationError, field_validator
 
-from . import catalog
+from . import catalog, pins
 from .catalog import Change, Column
 from .descriptor import Descriptor, Strict, TableRef
-from .errors import PipelineError
-from .run import load
 
 
 class ProposedColumn(Strict):
@@ -89,45 +86,11 @@ class Verdict:
         return self.status != "BUMP"
 
 
-def descriptors(paths: list[Path]) -> Iterator[Path]:
-    for path in paths:
-        if path.is_file():
-            yield path
-        else:
-            yield from sorted(p for p in path.rglob("*") if p.suffix in (".yml", ".yaml"))
-
-
-def names_table(raw: object, ref: TableRef) -> bool:
-    """Whether a YAML document is a descriptor whose source is this table.
-
-    Read before validation, so that a descriptor too broken to parse is still
-    recognised as a consumer rather than silently dropped from the list.
-    Anything that is not a Cordata descriptor — an expectation suite, say — is
-    not a consumer.
-    """
-    if not isinstance(raw, dict) or not str(raw.get("apiVersion", "")).startswith("cordata.tech/"):
-        return False
-    source = raw.get("source")
-    return (
-        isinstance(source, dict)
-        and str(source.get("database", "")).strip() == ref.database
-        and str(source.get("table", "")).strip() == ref.table
-    )
-
-
-def judge(path: Path, proposal: Proposal, con) -> Verdict | None:
-    try:
-        raw = yaml.safe_load(path.read_text())
-    except yaml.YAMLError:
-        return None  # not a descriptor anyone could be running
-    if not names_table(raw, proposal.ref):
-        return None
-
-    try:
-        pipeline = load(path)
-    except (ValidationError, PipelineError) as exc:
-        first = str(exc).splitlines()[0]
-        return Verdict("UNREADABLE", path, detail=first)
+def judge(reader: pins.Reader, proposal: Proposal, con) -> Verdict:
+    """One reader's pin against the proposal. The list of readers is `pins.readers`."""
+    pipeline, path = reader.pipeline, reader.path
+    if pipeline is None:
+        return Verdict("UNREADABLE", path, detail=reader.detail)
 
     pinned = pipeline.source.schema_version
     columns = catalog.columns_at(con, proposal.ref, pinned)
@@ -208,9 +171,7 @@ def main(argv: list[str] | None = None, out=None) -> int:
             'SELECT max(version) FROM _catalog.tables WHERE database = ? AND "table" = ?',
             [proposal.ref.database, proposal.ref.table],
         ).fetchone()[0]
-        verdicts = [
-            v for p in descriptors(args.paths) if (v := judge(p, proposal, con)) is not None
-        ]
+        verdicts = [judge(r, proposal, con) for r in pins.readers(proposal.ref, args.paths)]
 
     report(proposal, latest, args.paths, verdicts, out)
     return 1 if any(v.fails for v in verdicts) else 0

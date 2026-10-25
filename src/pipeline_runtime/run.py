@@ -11,47 +11,24 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import yaml
-
-from . import backends, catalog, descriptor_v2, policy
+from . import backends, catalog, policy
 from .descriptor import Descriptor, OnFailure, quarantined
 from .emit import emit
 from .errors import (
     PipelineError,
     PublishBlocked,
     SchemaDrift,
-    UnknownApiVersion,
     UnknownKind,
 )
 from .expectations import Validation, load_suite, validate
+
+# Parsing lives in `pins`, on the base install, so that finding a table's
+# readers needs no execution stack. `load` is re-exported because callers have
+# always imported it from the executor.
+from .pins import as_v1, load, parse  # noqa: F401
 from .trace import Trace, rows
 
 log = logging.getLogger(__name__)
-
-# apiVersion is a dispatch key, not decoration. v2 is registered beside v1
-# rather than replacing it, so descriptors written against v1 keep parsing while
-# domains migrate one at a time.
-MODELS: dict[str, type[Descriptor] | type[descriptor_v2.Descriptor]] = {
-    "cordata.tech/v1": Descriptor,
-    "cordata.tech/v2": descriptor_v2.Descriptor,
-}
-
-
-def parse(path: Path) -> Descriptor | descriptor_v2.Descriptor:
-    """The descriptor as written, in the model its apiVersion names."""
-    raw = yaml.safe_load(path.read_text())
-    if (model := MODELS.get(raw.get("apiVersion"))) is None:
-        raise UnknownApiVersion(raw.get("apiVersion"), known=sorted(MODELS))
-    return model.model_validate(raw)
-
-
-def load(path: Path) -> Descriptor:
-    """The descriptor in the one shape the executor runs, whichever version it was written in."""
-    return _as_v1(parse(path))
-
-
-def _as_v1(declared: Descriptor | descriptor_v2.Descriptor) -> Descriptor:
-    return declared.as_v1() if isinstance(declared, descriptor_v2.Descriptor) else declared
 
 
 def _dispatch(registry: dict, name: str, kind: str):
@@ -63,7 +40,7 @@ def _dispatch(registry: dict, name: str, kind: str):
 def run(descriptor_path: Path, run_id: str, trace: Trace | None = None) -> None:
     """Entry point. Guarantees exactly one terminal event per run."""
     declared = parse(descriptor_path)  # UnknownApiVersion escapes — see below
-    pipeline = _as_v1(declared)
+    pipeline = as_v1(declared)
     trace = trace or Trace(run_id)
     trace(
         "descriptor",

@@ -7,7 +7,7 @@ field with no name of its own. v2 moves each under the table it binds —
 descriptor has an exact v1 equivalent and the executor keeps running one shape.
 
 A separate module rather than an edit to `descriptor.py`, which is part 1 § 3
-verbatim. `run.MODELS` registers this beside v1, so the published descriptors
+verbatim. `pins.MODELS` registers this beside v1, so the published descriptors
 keep parsing while domains migrate one at a time. The reasoning is recorded on
 cordata-tech/pipeline-runtime#1.
 """

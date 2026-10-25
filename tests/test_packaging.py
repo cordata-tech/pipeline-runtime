@@ -80,9 +80,10 @@ def test_the_lowest_classifier_is_the_floor_requires_python_promises():
 # ------------------------------------------------- what an install carries
 
 
-def test_model_and_policy_import_without_the_execution_stack():
+def test_model_policy_and_pins_import_without_the_execution_stack():
+    # `pins` because catalog-mcp lists a table's readers from a base install.
     out = _fresh(
-        "import sys, pipeline_runtime.descriptor, pipeline_runtime.policy; "
+        "import sys, pipeline_runtime.descriptor, pipeline_runtime.policy, pipeline_runtime.pins; "
         f"print(sorted(m for m in {EXECUTION!r} if m in sys.modules))"
     )
     assert out.returncode == 0, out.stderr

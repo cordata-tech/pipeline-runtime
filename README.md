@@ -153,6 +153,10 @@ pins the pipelines run on and cannot fall behind them; a pipeline added
 tomorrow is on it as soon as its descriptor is merged. An organisation with
 several repositories passes several checkouts. Readers that declare nothing —
 ad-hoc SQL, notebooks, BI tools — are not on it, and no check here can see them.
+The list itself is `pipeline_runtime.pins.readers()`, which needs only the base
+install, so a catalog can serve it without the execution stack;
+[catalog-mcp](https://github.com/cordata-tech/catalog-mcp) does, as its
+`get_consumers` tool.
 
 **Not every change fails the build.** A removed or retyped column fails it, and
 so does a column that was not null becoming nullable, because a pipeline
@@ -288,6 +292,8 @@ knowing.
   release since the pin
 - `test_consumers.py` — the producer-side check: consumers found from the
   pins, and the exit status a CI job reads
+- `test_pins.py` — the list of a table's readers that check is built on, without
+  a seeded catalog
 - `test_failure_modes.py` — `block_publish`, `quarantine`, `warn`, schema
   drift, and the rule that outranks them: exactly one terminal event per run
 - `test_lineage.py` — the emitted events, checked against the OpenLineage
