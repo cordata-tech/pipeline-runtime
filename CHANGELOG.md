@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.2.8 — 2026-10-25
+
+**The job now carries the standard `sourceCodeLocation` facet, so the commit a
+run executed is readable without knowing `cordata_provenance`** (#13). It had
+only ever been in this project's own facet, and OpenLineage has
+`SourceCodeLocationJobFacet` for exactly this — so a reader that did not know
+the custom facet found nothing, even on a run that reported the commit twice
+over. `qedro` was in that position: it took a step's commit from the standard
+facet alone and said *"no code location was emitted"* against events carrying
+one.
+
+It carries `type: "git"`, `repoUrl`, `url`, `path` and `version`, built from the
+provenance facet rather than from git a second time, so the commit and the path
+cannot disagree between the two facets. Both URL fields name the repository
+rather than the file: a per-file URL needs the host's path template
+(`/blob/<sha>/<path>` on GitHub, `/-/blob/` on GitLab, `/src/` on Bitbucket),
+which a remote does not reveal, and a wrong one is a dead link that reads as
+authoritative.
+
+**A remote is normalised before it is emitted, and credentials are dropped.**
+`git remote get-url` returns whatever is configured, and an https remote can
+carry a token in its userinfo — `https://x-access-token:…@github.com/org/repo`
+is what a CI checkout often leaves behind — so emitting it raw would publish a
+credential to every lineage consumer. SSH remotes are rewritten to https, and a
+remote that is not an http URL at all (a local path, `file://`) means the facet
+is absent rather than present with a filesystem location, which is what #12 took
+off the wire.
+
+**The facet is absent rather than partial**, which is #11's rule again: it needs
+a work tree, a commit and an http remote, and a run from an installed copy has
+none of the three. So `cordata_provenance` remains the field that always carries
+the commit when there is one, and it keeps `descriptor_git_commit` for a second
+reason — `descriptor_git_commit_signed` judges that commit and has to have it to
+point at. `schemas/provenance.json` now says why each of the three remaining
+fields has no standard home: no facet says whether a signature verified, and a
+commit is not the bytes that ran.
+
+Being a job facet, it is inherited by the `.validate` event along with
+`processing`, which #9 made true and a test now holds.
+
 ## 0.2.7 — 2026-10-25
 
 **`pipeline-runtime demo DIR` works from an editable install whatever the
