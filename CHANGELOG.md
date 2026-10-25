@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.2.7 — 2026-10-25
+
+**`pipeline-runtime demo DIR` works from an editable install whatever the
+working directory** (#14). It failed in a clone — the one place a contributor
+runs it — unless the working directory happened to be the repository root, and
+the message blamed the install:
+
+```text
+FileNotFoundError: no descriptor for the fraud domain under example — an install
+missing part of its example, which the release workflow checks for
+```
+
+Nothing was missing. An editable install maps no `pipeline_runtime.example`, and
+both fallbacks were relative paths resolved against the working directory, while
+`demo` exists to be pointed at some other directory. The example is now found
+from the module's own location instead. Searching upward from the working
+directory would have been the wrong repair, since inside somebody else's
+checkout it would find their `example/`.
+
+**The same defect was in `policy.ontology_path()`**, so the demo depended on the
+working directory in two places rather than one: with the descriptors found, a
+run then reported *no LF-tag ontology at example/ontology.json* while the file
+sat beside the package. Both now resolve through `example_root()`.
+
+`example_root()` raises and names the directories it looked in when there is
+genuinely no example, so "an install missing part of its example" is reserved
+for an install that is missing part of its example.
+
+Two tests changed rather than being added, which is the part worth reading. The
+demo fixture chdir'd to the repository before each run, and
+`test_without_a_packaged_copy_the_missing_file_is_reported` asserted the relative
+path that does not resolve — so the suite had both encoded the defect and
+hidden it. The fixture now runs from an unrelated directory, and the ontology
+test asserts the file is found and readable, with a second test for the case
+where there is no example anywhere.
+
+One consequence beyond the command working: since #11 and #12 an installed copy
+reports no commit and no work tree, so a clone is the only place a run can put
+`descriptor_git_commit` and a signature verdict on the wire — and the demo is
+how that capture is produced in one command. From an editable install it now
+emits `example/domains/fraud/pipelines/transactions_scored.yml` with
+`descriptor_git_commit_signed: true`.
+
 ## 0.2.6 — 2026-10-25
 
 **`cordata_provenance.descriptor_path` is a relative path again, as
