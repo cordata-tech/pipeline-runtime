@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.2.6 — 2026-10-25
+
+**`cordata_provenance.descriptor_path` is a relative path again, as
+`schemas/provenance.json` has promised since the facet was published** (#12).
+It was `str()` of whatever path the caller handed the CLI, so the field's value
+depended on how a run was invoked rather than on which descriptor ran, and from
+an installed copy it carried the host's filesystem layout —
+`/private/tmp/…/site-packages/pipeline_runtime/example/domains/fraud/…` — into
+every event.
+
+It is now relative to the root of the work tree holding the descriptor, and
+outside a work tree relative to the parent of its domain directory, which
+`run()` already treats as the domain root. The two cases give
+`example/domains/fraud/pipelines/transactions_scored.yml` from this repository
+and `fraud/pipelines/transactions_scored.yml` from a wheel. A descriptor under
+`site-packages` takes the second rule even when a work tree encloses it,
+because the usual Python layout puts the virtual environment inside the
+project, and the work tree found there is the reader's own repository rather
+than the example's.
+
+**For the invocation the README documents, the value does not change**, which is
+why `docs/evidence/provenance-names-the-release.md` is still accurate. What
+changes is an absolute invocation, and any run from an installed copy. A
+consumer that stored the old value sees a different string for the same
+descriptor; `descriptor_sha256` still proves which bytes ran and is unaffected.
+
+The tests now assert the value rather than the key's presence. That was the gap
+that let this stand through five releases:
+`test_the_facet_matches_the_schema_it_publishes` compares the emitted key set
+with the schema's properties, so nothing held a field to what its own
+description promised.
+
 ## 0.2.5 — 2026-10-23
 
 Two things a consumer reads off the wire change, both found by `qedro` reading
