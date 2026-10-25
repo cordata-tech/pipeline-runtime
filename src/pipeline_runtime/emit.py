@@ -129,7 +129,7 @@ def provenance_facet(
 ) -> ProvenanceRunFacet:
     commit, signed = _git_provenance(descriptor_path)
     return ProvenanceRunFacet(
-        descriptor_path=str(descriptor_path),
+        descriptor_path=_descriptor_location(descriptor_path),
         descriptor_sha256=hashlib.sha256(descriptor_path.read_bytes()).hexdigest(),
         source_table=pipeline.source.fqn,
         source_schema_version=pipeline.source.schema_version,
@@ -140,6 +140,64 @@ def provenance_facet(
         source_published_by=source.producer if source else None,
         source_published_release=source.release if source else None,
     )
+
+
+def _descriptor_location(path: Path) -> str:
+    """Where the descriptor sits, named so that two machines agree.
+
+    The work tree root when there is one, so a checkout on a laptop and the
+    same commit in CI report one string, and `descriptor_git_commit` resolves
+    against it. Outside a work tree — which is what an installed copy looks
+    like — the domain directory's parent, giving
+    `fraud/pipelines/transactions_scored.yml`: `run()` already treats the
+    descriptor's grandparent as the domain root, so this names the same
+    structure one level up rather than inventing one.
+
+    Never the path as given, which is what this was until 0.2.5 (#12). That
+    disagreed with `schemas/provenance.json`, which has promised a relative
+    path since the facet was published, and from an installed copy it carried
+    the host's filesystem layout into lineage — a site-packages path under
+    whatever temporary directory the run happened to use. `descriptor_sha256`
+    is what proves which bytes ran, and it is unaffected.
+
+    A descriptor too shallow to have a domain directory keeps its file name:
+    the field is in `required`, a run always executed some file, and a name
+    with no path names no host.
+
+    A descriptor under `site-packages` is treated as installed even when a work
+    tree encloses it, because the usual Python layout puts the virtual
+    environment inside the project — so the work tree found there is the
+    reader's own repository, and naming the example relative to it would emit
+    `.venv/lib/python3.13/site-packages/…`, which describes where the wheel was
+    unpacked rather than which descriptor ran.
+    """
+    resolved = path.resolve()
+    installed = any(parent.name == "site-packages" for parent in resolved.parents)
+    root = None if installed else _work_tree_root(resolved)
+    if root is not None:
+        try:
+            return resolved.relative_to(root).as_posix()
+        except ValueError:  # a work tree that does not contain it, via a symlink
+            pass
+    if len(resolved.parents) >= 3:
+        return resolved.relative_to(resolved.parents[1].parent).as_posix()
+    return resolved.name
+
+
+def _work_tree_root(path: Path) -> Path | None:
+    """The root of the work tree holding `path`, or None when there is none."""
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=path.parent,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        ).stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        return None
+    return Path(out).resolve() if out else None
 
 
 def _git_provenance(path: Path) -> tuple[str | None, bool | None]:

@@ -11,7 +11,7 @@
       "properties": {
         "descriptor_path": {
           "type": "string",
-          "description": "Path of the descriptor this run executed, relative to the repository root.",
+          "description": "Path of the descriptor this run executed, relative to the root of the work tree holding it. Outside a work tree — which is what a run from an installed copy looks like — relative to the parent of its domain directory instead, so the same descriptor is named the same way wherever it ran; a descriptor too shallow to have a domain directory carries its file name alone. Never absolute: that would name the host's filesystem layout rather than the descriptor, and descriptor_sha256 is what proves which bytes ran.",
           "example": "domains/fraud/pipelines/transactions_scored.yml"
         },
         "descriptor_sha256": {

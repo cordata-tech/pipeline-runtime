@@ -217,6 +217,62 @@ def test_a_blocked_publish_still_names_the_release_it_read(env, events, scenario
     assert facet["source_published_release"] == "v4.11.0"
 
 
+def test_the_descriptor_is_named_relative_to_its_work_tree(emitted):
+    """Two checkouts of one commit have to report one string.
+
+    The value is asserted rather than the key's presence, which is the gap that
+    let an absolute path disagree with `schemas/provenance.json` through five
+    releases (#12): the schema test compares key sets, so nothing held a field
+    to what its own description promised.
+    """
+    facet = emitted()[0]["run"]["facets"]["cordata_provenance"]
+    assert facet["descriptor_path"] == "example/domains/fraud/pipelines/transactions_scored.yml"
+
+
+def test_a_descriptor_outside_a_work_tree_names_its_domain_and_not_the_host(
+    env, events, scenario, tmp_path
+):
+    """What a run from an installed copy emits.
+
+    `scenario` copies a domain into a directory that is not a work tree, which
+    is the shape of a `pip install`ed example: the descriptor is real, the
+    repository is not there, and the absolute path would be a site-packages
+    directory under somebody's temporary files. The domain survives because it
+    is part of the descriptor's identity; nothing above it does.
+    """
+    run(scenario(FRAUD), str(uuid.uuid4()))
+
+    facet = events()[0]["run"]["facets"]["cordata_provenance"]
+    assert facet["descriptor_path"] == "fraud/pipelines/transactions_scored.yml"
+    assert str(tmp_path) not in facet["descriptor_path"]
+    assert not facet["descriptor_path"].startswith("/")
+
+
+def test_an_installed_descriptor_is_not_named_after_the_reader_s_repository(tmp_path):
+    """The layout almost every Python project uses: `.venv` inside the repo.
+
+    A reader who runs the demo in their own checkout has the packaged example
+    sitting under a work tree that has nothing to do with it, and naming the
+    descriptor relative to that work tree would emit a path describing where
+    the wheel was unpacked. `site-packages` in the path is what settles it.
+    """
+    import subprocess
+
+    from pipeline_runtime.emit import _descriptor_location
+
+    project = tmp_path / "their-project"
+    descriptor = (
+        project
+        / ".venv/lib/python3.13/site-packages/pipeline_runtime/example"
+        / "domains/fraud/pipelines/transactions_scored.yml"
+    )
+    descriptor.parent.mkdir(parents=True)
+    descriptor.touch()
+    subprocess.run(["git", "init", "-q"], cwd=project, check=True)
+
+    assert _descriptor_location(descriptor) == "fraud/pipelines/transactions_scored.yml"
+
+
 def test_the_signature_verdict_never_travels_without_a_commit(env, events, scenario):
     """A verdict with nothing to attach it to is worse than no verdict.
 
