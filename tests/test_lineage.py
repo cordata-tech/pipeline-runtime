@@ -217,6 +217,93 @@ def test_a_blocked_publish_still_names_the_release_it_read(env, events, scenario
     assert facet["source_published_release"] == "v4.11.0"
 
 
+def test_the_commit_is_also_in_the_standard_facet(emitted):
+    """A consumer that does not know `cordata_provenance` still finds the commit.
+
+    `SourceCodeLocationJobFacet` is where OpenLineage puts this, and `qedro`
+    read only that facet, so a run from a checkout reported a commit nothing
+    could reach (#13).
+    """
+    event = emitted()[0]
+    location = event["job"]["facets"]["sourceCodeLocation"]
+    provenance = event["run"]["facets"]["cordata_provenance"]
+
+    assert location["type"] == "git"
+    assert location["version"] == provenance["descriptor_git_commit"]
+    assert location["path"] == provenance["descriptor_path"]
+    assert location["repoUrl"] == "https://github.com/cordata-tech/pipeline-runtime"
+    assert location["url"] == location["repoUrl"]
+
+
+def test_the_two_facets_cannot_disagree_about_the_commit(emitted):
+    """One `git log` per run, read by both facets.
+
+    Two fields naming the same commit is the cost of keeping
+    `descriptor_git_commit` where `descriptor_git_commit_signed` can judge it,
+    so what has to be true is that they are the same value — asserted across
+    every event, since the job facet travels on the assertion event too.
+    """
+    for event in emitted():
+        location = event["job"]["facets"]["sourceCodeLocation"]
+        provenance = event["run"]["facets"].get("cordata_provenance")
+        if provenance is not None:
+            assert location["version"] == provenance["descriptor_git_commit"]
+
+
+def test_the_standard_facet_reaches_the_validation_event_too(emitted):
+    """Inherited rather than rebuilt, which is what #9 made true.
+
+    Asserted because nothing else would notice if a later change went back to
+    building the validation job from scratch: the facet would quietly stop
+    travelling, exactly as `processing` did.
+    """
+    locations = [e["job"]["facets"]["sourceCodeLocation"] for e in emitted()]
+    assert len(locations) > 1
+    assert all(location == locations[0] for location in locations)
+
+
+def test_no_source_code_location_when_the_run_can_name_no_repository(env, events, scenario):
+    """Absent rather than partial, which is #11's rule again.
+
+    A copied domain is in no work tree, so there is no commit and no remote.
+    Half a facet — a `type` and a `url` with no version — would claim a
+    location nobody can resolve.
+    """
+    run(scenario(FRAUD), str(uuid.uuid4()))
+
+    for event in events():
+        assert "sourceCodeLocation" not in event["job"]["facets"]
+        assert "processing" in event["job"]["facets"], "the other job facet still travels"
+
+
+@pytest.mark.parametrize(
+    ("configured", "emitted_url"),
+    [
+        ("https://github.com/org/repo.git", "https://github.com/org/repo"),
+        ("https://github.com/org/repo", "https://github.com/org/repo"),
+        # What a CI checkout leaves in the config, and the reason this function
+        # exists rather than the raw remote being emitted.
+        (
+            "https://x-access-token:ghp_secret@github.com/org/repo.git",
+            "https://github.com/org/repo",
+        ),
+        ("https://user@gitlab.example.com/group/repo.git", "https://gitlab.example.com/group/repo"),
+        ("git@github.com:org/repo.git", "https://github.com/org/repo"),
+        ("ssh://git@github.com/org/repo.git", "https://github.com/org/repo"),
+        # Not an http URL, and a path would put the host's layout back on the
+        # wire — which is what #12 took off it.
+        ("/srv/git/repo.git", None),
+        ("file:///srv/git/repo.git", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_a_remote_is_emitted_as_an_http_url_naming_no_secret(configured, emitted_url):
+    from pipeline_runtime.emit import _normalize_remote
+
+    assert _normalize_remote(configured) == emitted_url
+
+
 def test_the_descriptor_is_named_relative_to_its_work_tree(emitted):
     """Two checkouts of one commit have to report one string.
 

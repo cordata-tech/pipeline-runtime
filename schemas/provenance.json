@@ -17,7 +17,7 @@
         "descriptor_sha256": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$",
-          "description": "Hash of the descriptor bytes as they were when the run started — not as the file looks today."
+          "description": "Hash of the descriptor bytes as they were when the run started — not as the file looks today. Kept here rather than moved to a standard facet because none carries it: sourceCodeLocation names a commit, and a commit is not the bytes that ran. A rewritten history, an uncommitted edit or a file assembled by a deployment step all produce a commit that resolves and bytes that differ."
         },
         "source_table": {
           "type": "string",
@@ -31,11 +31,11 @@
         },
         "descriptor_git_commit": {
           "type": ["string", "null"],
-          "description": "The commit that last touched the descriptor. Null outside a repository — absence of provenance is not the same as bad provenance, and a consumer reading null knows to ask."
+          "description": "The commit that last touched the descriptor. Null outside a repository — absence of provenance is not the same as bad provenance, and a consumer reading null knows to ask. Also emitted as the standard sourceCodeLocation job facet's version since 0.2.8, for a consumer that does not know this facet; kept here as well because descriptor_git_commit_signed below judges it and must have it to point at, and the two are built from one lookup so they cannot disagree. The standard facet is absent on a run that can name no remote, so this is the field that always carries the commit when there is one."
         },
         "descriptor_git_commit_signed": {
           "type": ["boolean", "null"],
-          "description": "Whether that commit's signature verified against a trusted key (git's `%G?` returning G). A run whose provenance points at an unsigned commit is itself a finding. Absent whenever descriptor_git_commit is, because a verdict with no commit to attach it to reads as a finding where the truth is that no commit was found — a run from an installed copy, outside any checkout, looks exactly like that. Present whenever a commit is named, which dependentRequired states."
+          "description": "Whether that commit's signature verified against a trusted key (git's `%G?` returning G). A run whose provenance points at an unsigned commit is itself a finding. Absent whenever descriptor_git_commit is, because a verdict with no commit to attach it to reads as a finding where the truth is that no commit was found — a run from an installed copy, outside any checkout, looks exactly like that. Present whenever a commit is named, which dependentRequired states. No standard facet carries it: OpenLineage can say which commit ran and nothing says whether anybody authorised it, which is the field this project exists to argue for."
         },
         "executor_version": {
           "type": "string",

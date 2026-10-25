@@ -21,6 +21,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import attr
 from openlineage.client import OpenLineageClient
@@ -33,7 +34,13 @@ from openlineage.client.event_v2 import (
     RunState,
     set_producer,
 )
-from openlineage.client.facet_v2 import JobFacet, RunFacet, error_message_run, schema_dataset
+from openlineage.client.facet_v2 import (
+    JobFacet,
+    RunFacet,
+    error_message_run,
+    schema_dataset,
+    source_code_location_job,
+)
 from openlineage.client.generated import tags_dataset
 from openlineage.client.transport.file import FileConfig, FileTransport
 
@@ -142,6 +149,105 @@ def provenance_facet(
     )
 
 
+def source_code_location(descriptor_path: Path, provenance: ProvenanceRunFacet) -> JobFacet | None:
+    """The commit in the standard facet, so a consumer need not know ours (#13).
+
+    `cordata_provenance` has carried the commit since the facet was published,
+    and a reader that does not know this project finds nothing — OpenLineage has
+    `SourceCodeLocationJobFacet` for exactly this. What stays custom is what the
+    standard cannot say: whether the signature verified, and which bytes ran.
+
+    Built from the provenance facet rather than from git a second time, so the
+    commit and the path cannot disagree between the two facets: there is one
+    `_git_provenance` call per run and one `_descriptor_location` call, and both
+    facets read their results.
+
+    None rather than a partial facet, which is #11's rule again. Three things
+    have to hold: the descriptor is in a work tree (so there is a commit at
+    all), that work tree has a remote, and the remote is an http URL. The last
+    one matters more than it looks — a remote that is a local path would put a
+    filesystem location back on the wire, which is what #12 removed.
+    """
+    root = _work_tree(descriptor_path)
+    if root is None or provenance.descriptor_git_commit is None:
+        return None
+    remote = _normalize_remote(_remote_url(root))
+    if remote is None:
+        return None
+    return source_code_location_job.SourceCodeLocationJobFacet(
+        type="git",
+        # The spec wants an http URL locating the source. A per-file URL would
+        # need the host's path template — `/blob/<sha>/<path>` on GitHub,
+        # `/-/blob/` on GitLab, `/src/` on Bitbucket — which a remote alone does
+        # not reveal, and a wrong one is a dead link that reads as authoritative.
+        # So both fields carry the repository, and `path` plus `version` say
+        # which file at which commit.
+        url=remote,
+        repoUrl=remote,
+        path=provenance.descriptor_path,
+        version=provenance.descriptor_git_commit,
+    )
+
+
+def _remote_url(root: Path) -> str | None:
+    """`origin`'s URL, or None when there is no remote to name."""
+    try:
+        out = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        ).stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        return None
+    return out or None
+
+
+def _normalize_remote(raw: str | None) -> str | None:
+    """A remote as an http URL that names no secret, or None.
+
+    Credentials first, because `git remote get-url` returns whatever is
+    configured and an https remote can carry a token in its userinfo —
+    `https://x-access-token:ghp_…@github.com/org/repo`, which is what a CI
+    checkout often leaves behind. Emitting that would publish a credential to
+    every lineage consumer, so userinfo is dropped rather than trusted.
+
+    SSH remotes are rewritten to https: `git@github.com:org/repo.git` is the
+    usual form in a developer's checkout, and it is the same repository a
+    reader reaches over https. Anything that is not http, https or ssh — a
+    local path, a bundle, `file://` — returns None, since the field is
+    specified as an http URL and a path would name the host.
+    """
+    if not raw:
+        return None
+    candidate = raw.strip()
+
+    # scp-like syntax, which has no scheme: [user@]host:path
+    if "://" not in candidate and ":" in candidate:
+        host, _, repo_path = candidate.partition(":")
+        host = host.rpartition("@")[2]
+        if not host or repo_path.startswith("/"):
+            return None
+        candidate = f"https://{host}/{repo_path.lstrip('/')}"
+
+    parsed = urlsplit(candidate)
+    if parsed.scheme in ("ssh", "git", "git+ssh"):
+        parsed = parsed._replace(scheme="https")
+    elif parsed.scheme not in ("http", "https"):
+        return None
+
+    host = parsed.hostname or ""
+    if not host:
+        return None
+    if parsed.port and parsed.scheme == "https":
+        host = f"{host}:{parsed.port}" if parsed.port != 443 else host
+
+    cleaned = urlunsplit((parsed.scheme, host, parsed.path, "", ""))
+    return cleaned.removesuffix("/").removesuffix(".git") or None
+
+
 def _descriptor_location(path: Path) -> str:
     """Where the descriptor sits, named so that two machines agree.
 
@@ -172,8 +278,7 @@ def _descriptor_location(path: Path) -> str:
     unpacked rather than which descriptor ran.
     """
     resolved = path.resolve()
-    installed = any(parent.name == "site-packages" for parent in resolved.parents)
-    root = None if installed else _work_tree_root(resolved)
+    root = _work_tree(resolved)
     if root is not None:
         try:
             return resolved.relative_to(root).as_posix()
@@ -182,6 +287,22 @@ def _descriptor_location(path: Path) -> str:
     if len(resolved.parents) >= 3:
         return resolved.relative_to(resolved.parents[1].parent).as_posix()
     return resolved.name
+
+
+def _work_tree(path: Path) -> Path | None:
+    """The work tree holding this descriptor, or None when it is not in one.
+
+    A descriptor under `site-packages` is in none, whatever encloses it: the
+    usual Python layout puts the virtual environment inside the project, so the
+    work tree found there is the reader's own repository rather than the one the
+    descriptor came from (#12). Both the path and the source-code-location
+    facet depend on that distinction, which is why it lives here rather than in
+    either of them.
+    """
+    resolved = path.resolve()
+    if any(parent.name == "site-packages" for parent in resolved.parents):
+        return None
+    return _work_tree_root(resolved)
 
 
 def _work_tree_root(path: Path) -> Path | None:
@@ -316,24 +437,27 @@ def emit(
     events: list[RunEvent] = []
 
     # 1. Run facets — provenance always, plus the reason if this run died (§ 4)
-    run_facets: dict[str, RunFacet] = {
-        "cordata_provenance": provenance_facet(pipeline, descriptor_path, source_publication)
-    }
+    provenance = provenance_facet(pipeline, descriptor_path, source_publication)
+    run_facets: dict[str, RunFacet] = {"cordata_provenance": provenance}
     if error is not None:
         run_facets["errorMessage"] = error_message_run.ErrorMessageRunFacet(
             message=str(error), programmingLanguage="python"
         )
 
-    job = Job(
-        namespace=f"cordata.{domain}",
-        name=pipeline.metadata.name,
-        facets={
-            "processing": ProcessingJobFacet(
-                purpose=pipeline.processing.purpose,
-                legal_basis=pipeline.processing.legal_basis,
-            )
-        },
-    )
+    job_facets: dict[str, JobFacet] = {
+        "processing": ProcessingJobFacet(
+            purpose=pipeline.processing.purpose,
+            legal_basis=pipeline.processing.legal_basis,
+        )
+    }
+    # The commit in the facet a consumer already knows, built from the
+    # provenance facet above so the two cannot disagree, and absent when this
+    # run cannot name a repository (#13).
+    location = source_code_location(descriptor_path, provenance)
+    if location is not None:
+        job_facets["sourceCodeLocation"] = location
+
+    job = Job(namespace=f"cordata.{domain}", name=pipeline.metadata.name, facets=job_facets)
 
     # 2. Datasets — what the run actually touched. A failed run touched nothing;
     #    a quarantined one wrote to quarantined(target), not the declared one.
