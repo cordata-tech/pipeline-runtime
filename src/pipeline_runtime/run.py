@@ -151,9 +151,17 @@ def execute(
                 raise PublishBlocked(pipeline.metadata.name, result)
             case OnFailure.QUARANTINE:
                 target = quarantined(pipeline.target)
-                writer(frame, target, tags)
+                mode = writer(frame, target, tags)
                 trace("write", target.fqn, f"{pipeline.target.kind}, quarantined")
-                emit(pipeline, descriptor_path, run_id, result, status="QUARANTINED", **shapes)
+                emit(
+                    pipeline,
+                    descriptor_path,
+                    run_id,
+                    result,
+                    status="QUARANTINED",
+                    write_mode=mode,
+                    **shapes,
+                )
                 trace("emit", "QUARANTINED → lineage adapter", "inputs=1 outputs=1")
                 return
             case OnFailure.WARN:
@@ -161,12 +169,14 @@ def execute(
                 trace("warn", pipeline.metadata.name, result.summary)
 
     # 5. write, carrying the contract
-    writer(frame, pipeline.target, tags)
+    # The writer reports what it did to whatever was already there, which is
+    # what lets the event say the contents were replaced (#15).
+    mode = writer(frame, pipeline.target, tags)
     keys = len(pipeline.target.partition_by)
     trace(
         "write",
         pipeline.target.fqn,
         f"{pipeline.target.kind}, {keys} partition key{'' if keys == 1 else 's'}",
     )
-    emit(pipeline, descriptor_path, run_id, result, status="COMPLETE", **shapes)
+    emit(pipeline, descriptor_path, run_id, result, status="COMPLETE", write_mode=mode, **shapes)
     trace("emit", "COMPLETE → lineage adapter", "inputs=1 outputs=1")

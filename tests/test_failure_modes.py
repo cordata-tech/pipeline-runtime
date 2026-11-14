@@ -71,6 +71,13 @@ def test_quarantine_writes_beside_the_target_never_to_it(env, events, scenario):
     event = terminal(events())[0]
     assert event["eventType"] == "FAIL", "a quarantined run did not publish"
     assert event["outputs"][0]["name"].endswith("_quarantined")
+    # The side copy is replaced whole by the same writer, so it carries the same
+    # lifecycle state as a published output. #15 asked for this on `COMPLETE`
+    # only, and withholding it here would mean a quarantined dataset rebuilt
+    # every run looked like one written once — on the copy somebody eventually
+    # opens without the descriptor in front of them.
+    facets = event["outputs"][0]["facets"]
+    assert facets["lifecycleStateChange"]["lifecycleStateChange"] == "OVERWRITE"
 
 
 def test_warn_publishes_and_says_so(env, events, scenario, caplog):

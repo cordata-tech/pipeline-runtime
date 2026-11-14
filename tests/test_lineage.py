@@ -470,6 +470,66 @@ def test_every_event_a_run_emits_carries_the_same_processing_facet(emitted):
     assert facets[0]["legal_basis"] == pipeline.processing.legal_basis
 
 
+@pytest.mark.parametrize(
+    ("descriptor", "kind"),
+    [(FRAUD, "iceberg"), (CLAIMS, "parquet")],
+    ids=["write_iceberg", "write_parquet"],
+)
+def test_an_output_its_writer_replaced_says_so(emitted, descriptor, kind):
+    """Both local writers replace an output whole, and the event now says it.
+
+    `_write` unlinks the stale Parquet and `_publish` issues `CREATE OR REPLACE
+    TABLE`, so every run of these pipelines overwrites what was there. Until
+    0.2.9 no output carried `lifecycleStateChange`, and a consumer could not
+    tell a rebuild from a first write: `qedro erasure` reported every
+    descendant as written with the manner not reported (#15).
+
+    One case per writer, because the two are separate registry entries that a
+    future `aws` backend binds to genuinely different mechanisms.
+    """
+    from pipeline_runtime.run import load
+
+    assert load(descriptor).target.kind == kind, "the case no longer covers the writer it names"
+
+    [output] = emitted(descriptor)[0]["outputs"]
+    assert output["facets"]["lifecycleStateChange"]["lifecycleStateChange"] == "OVERWRITE"
+
+
+def test_a_writer_that_appends_inherits_no_claim_that_it_replaced(env, events, monkeypatch):
+    """The facet follows what the writer reported, not the target's `kind`.
+
+    Pinned because the tempting implementation is to add the facet to every
+    output, or to key it on `kind` — and then a writer bound to `parquet` that
+    appends would report an overwrite that never happened, which is worse than
+    the silence #15 was filed about. The stand-in writes exactly what the real
+    one writes and differs only in what it says it did.
+    """
+    from pipeline_runtime.backends import WriteMode, local
+
+    def appending(frame, target, tags):
+        local.write_parquet(frame, target, tags)
+        return WriteMode.APPEND
+
+    monkeypatch.setitem(local.WRITERS, "parquet", appending)
+    run(CLAIMS, str(uuid.uuid4()))
+
+    [output] = events()[0]["outputs"]
+    assert "lifecycleStateChange" not in output["facets"]
+    assert output["facets"]["tags"], "the writer's other facets are unaffected"
+
+
+def test_only_what_a_run_wrote_carries_a_lifecycle(emitted):
+    """A lifecycle state is a claim about writing, so an input cannot carry one.
+
+    The source is read, not replaced, and saying otherwise about a table this
+    pipeline does not own would be the classification mistake from #3 in
+    another form.
+    """
+    for event in emitted():
+        for ref in event["inputs"]:
+            assert "lifecycleStateChange" not in ref["facets"]
+
+
 def test_the_resolved_tags_travel_on_the_dataset_they_classify(emitted):
     """Part 1 § 6's tags, resolved against the ontology and then emitted.
 

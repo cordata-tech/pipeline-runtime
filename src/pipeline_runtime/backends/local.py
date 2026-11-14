@@ -20,6 +20,7 @@ from .. import catalog
 from ..catalog import Schema
 from ..descriptor import Source, Step, Target
 from ..errors import PipelineError
+from . import WriteMode
 
 
 def warehouse() -> Path:
@@ -95,7 +96,7 @@ READERS = {
 # ---------------------------------------------------------------- writers
 
 
-def _write(frame: pd.DataFrame, target: Target, tags: dict[str, str]) -> None:
+def _write(frame: pd.DataFrame, target: Target, tags: dict[str, str]) -> WriteMode:
     out = local_path(target.location)
     if out.exists():
         for stale in out.rglob("*.parquet"):
@@ -113,6 +114,10 @@ def _write(frame: pd.DataFrame, target: Target, tags: dict[str, str]) -> None:
         frame.to_parquet(out / "part-0.parquet", index=False)
 
     _publish(frame, target, tags)
+    # Both halves above replace rather than add: the stale Parquet is unlinked
+    # and the table is created or replaced. Reported rather than assumed, so
+    # the event can say the contents were overwritten (#15).
+    return WriteMode.REPLACE
 
 
 def _hive_partitioned(frame: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
@@ -167,12 +172,12 @@ def _publish(frame: pd.DataFrame, target: Target, tags: dict[str, str]) -> None:
 # them to a single registry entry would hide it; keeping both entries keeps the
 # descriptors' distinction visible and marks exactly where an `aws` backend
 # diverges.
-def write_iceberg(frame: pd.DataFrame, target: Target, tags: dict[str, str]) -> None:
-    _write(frame, target, tags)
+def write_iceberg(frame: pd.DataFrame, target: Target, tags: dict[str, str]) -> WriteMode:
+    return _write(frame, target, tags)
 
 
-def write_parquet(frame: pd.DataFrame, target: Target, tags: dict[str, str]) -> None:
-    _write(frame, target, tags)
+def write_parquet(frame: pd.DataFrame, target: Target, tags: dict[str, str]) -> WriteMode:
+    return _write(frame, target, tags)
 
 
 WRITERS = {"iceberg": write_iceberg, "parquet": write_parquet}

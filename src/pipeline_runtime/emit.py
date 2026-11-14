@@ -38,6 +38,7 @@ from openlineage.client.facet_v2 import (
     JobFacet,
     RunFacet,
     error_message_run,
+    lifecycle_state_change_dataset,
     schema_dataset,
     source_code_location_job,
 )
@@ -356,12 +357,26 @@ def _git_provenance(path: Path) -> tuple[str | None, bool | None]:
 # resolved against the governance ontology from one a crawler guessed.
 TAG_SOURCE = "CORDATA_PIPELINE_RUNTIME"
 
+# What a writer reported doing, as the spec's lifecycle state. Keyed on
+# `backends.WriteMode` values rather than importing the enum, so `emit` does not
+# pull a backend — and pandas with it — into its import graph.
+#
+# A mode with no entry here emits no facet, which is the point of the mapping
+# being a lookup rather than a default: `APPEND` is absent, so an appending
+# writer cannot inherit a claim that it replaced the contents (#15). The spec's
+# other states — CREATE, DROP, TRUNCATE, ALTER, RENAME — describe acts on the
+# dataset itself rather than on a run's output, and no writer performs one.
+LIFECYCLE = {
+    "replace": lifecycle_state_change_dataset.LifecycleStateChange.OVERWRITE,
+}
+
 
 def dataset(
     ref: TableRef,
     domain: str,
     columns: Sequence[Any] | None = None,
     tags: dict[str, str] | None = None,
+    lifecycle: str | None = None,
     **kwargs: Any,
 ) -> Any:
     """One dataset reference, carrying its schema and classification when the run knows them.
@@ -376,6 +391,10 @@ def dataset(
     `TagsDatasetFacet` is a plain `DatasetFacet`, so unlike the quality facet in
     `docs/post-corrections.md` § 1 it belongs in `facets` and is defined for an
     input and an output alike.
+
+    `lifecycle` is what the writer reported doing to the contents that were
+    already there, and it is a writer's fact about an output: the caller passes
+    it for a dataset this run wrote, never for one it read.
     """
     cls = kwargs.pop("cls", OutputDataset)
     facets = dict(kwargs.pop("facets", {}))
@@ -389,6 +408,12 @@ def dataset(
                 tags_dataset.TagsDatasetFacetFields(key=k, value=v, source=TAG_SOURCE)
                 for k, v in sorted(tags.items())
             ]
+        )
+    if lifecycle in LIFECYCLE:
+        facets["lifecycleStateChange"] = (
+            lifecycle_state_change_dataset.LifecycleStateChangeDatasetFacet(
+                lifecycleStateChange=LIFECYCLE[lifecycle]
+            )
         )
     return cls(namespace=f"cordata://{domain}", name=ref.fqn, facets=facets, **kwargs)
 
@@ -409,6 +434,7 @@ def emit(
     source_publication: Publication | None = None,
     tags: dict[str, str] | None = None,
     source_tags: dict[str, str] | None = None,
+    write_mode: str | None = None,
 ) -> list[RunEvent]:
     """Emit the run's terminal event, plus the assertion event when a suite ran.
 
@@ -428,6 +454,11 @@ def emit(
     the table this run read, because the classification of someone else's table
     is not this descriptor's to assert — and it is absent when the catalog holds
     none.
+
+    `write_mode` is what the writer reported doing to the output's existing
+    contents, and it decides whether the output carries a lifecycle facet. It
+    comes from the writer's return value rather than from the target's `kind`,
+    because two writers bound to one kind can differ — see `LIFECYCLE` (#15).
 
     Returns what was emitted so tests can assert on it — the executor itself
     ignores the return value.
@@ -476,12 +507,16 @@ def emit(
             inputs = [
                 dataset(pipeline.source, owner, source_columns, source_tags, cls=InputDataset)
             ]
-            outputs = [dataset(quarantined(pipeline.target), domain, target_columns, tags)]
+            outputs = [
+                dataset(
+                    quarantined(pipeline.target), domain, target_columns, tags, lifecycle=write_mode
+                )
+            ]
         case _:
             inputs = [
                 dataset(pipeline.source, owner, source_columns, source_tags, cls=InputDataset)
             ]
-            outputs = [dataset(pipeline.target, domain, target_columns, tags)]
+            outputs = [dataset(pipeline.target, domain, target_columns, tags, lifecycle=write_mode)]
 
     # 3. The terminal event — one per run, always
     terminal = RunEvent(

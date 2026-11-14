@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib
 import os
 from collections.abc import Callable
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -25,9 +26,30 @@ if TYPE_CHECKING:
     from ..catalog import Schema
     from ..descriptor import Source, Step, Target
 
+
+class WriteMode(StrEnum):
+    """What a writer did to the contents that were already there.
+
+    Part of the writer contract rather than of the lineage code, because only
+    the writer knows: both local writers replace an output whole — `_write`
+    unlinks the stale Parquet and `_publish` issues `CREATE OR REPLACE TABLE`
+    — while an appending writer for the same `kind` would not, and nothing
+    outside it could tell the two apart.
+
+    `emit` maps `REPLACE` to OpenLineage's `OVERWRITE` lifecycle state (#15).
+    A mode it has no mapping for, `APPEND` today, produces no facet, so a
+    writer that appends cannot inherit a claim that it replaced anything.
+    The vocabulary is this project's rather than the spec's so that a backend
+    stays a storage binding and does not depend on the lineage client.
+    """
+
+    REPLACE = "replace"
+    APPEND = "append"
+
+
 type Frame = pd.DataFrame
 type Reader = Callable[[Source, Schema], Frame]
-type Writer = Callable[[Frame, Target, dict[str, str]], None]
+type Writer = Callable[[Frame, Target, dict[str, str]], WriteMode]
 type StepRunner = Callable[[Frame, Step, Path], Frame]
 
 
