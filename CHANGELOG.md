@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.2.10 — 2026-11-14
+
+**An output a writer replaced now says so, with the standard
+`lifecycleStateChange` facet carrying `OVERWRITE`** (#15). Both local writers
+replace an output whole — `_write` unlinks the stale Parquet, `_publish` issues
+`CREATE OR REPLACE TABLE` — but nothing in the events said the contents had been
+replaced, so a consumer could not tell a rebuild from a first write. Read by
+`qedro` 0.11.0, every descendant of an erased table came out as *written, how not
+reported, so not shown to have replaced the contents*; it now reads *rebuilt*,
+and the propagation line goes from *2 written without saying how since the
+tombstone* to *2 rebuilt since the tombstone*.
+
+**The writer contract changed, which matters for anyone who has written a
+backend.** `Writer` now returns a `WriteMode` — `REPLACE` or `APPEND` — rather
+than `None`, because only the writer knows what it did to the contents that were
+already there, and two writers bound to one `kind` can differ. `emit` maps
+`REPLACE` to `OVERWRITE` through a lookup with no default, so a writer that
+appends cannot inherit a claim that it replaced anything. The mode is this
+project's vocabulary rather than the spec's, so a backend stays a storage
+binding and does not depend on the lineage client.
+
+A quarantined output carries the facet too. The same writer replaces the side
+copy whole on every run, and withholding it would make a dataset rebuilt every
+run look like one written once — on the copy somebody eventually opens without
+the descriptor in front of them.
+
+**Still absent: a facet for a deletion.** Nothing here emits `DROP` or a
+tombstone for an erasure, so `qedro erasure` continues to need `--since` for the
+erasure instant. What changed is what it can say about the rewrites after that
+instant, not where the instant comes from.
+
 ## 0.2.9 — 2026-10-25
 
 **A table's readers can be listed from the base install**, with the new
