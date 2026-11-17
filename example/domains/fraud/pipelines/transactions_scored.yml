@@ -36,6 +36,7 @@ contract:
     sensitivity: high
     residency: eu
     subject_type: customer
+    retention: 7y
 
 expectations:
   suite: expectations/transactions_scored.yml

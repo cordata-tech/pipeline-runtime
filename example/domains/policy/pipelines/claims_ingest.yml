@@ -31,6 +31,7 @@ contract:
     sensitivity: high
     residency: eu
     subject_type: customer
+    retention: 10y                   # ← different retention
 
 expectations:
   suite: expectations/claims_deduped.yml
