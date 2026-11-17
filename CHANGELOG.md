@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.11 — 2026-11-17
+
+**Both customer example descriptors carry a `retention` tag** (#16).
+catalog-mcp 0.4.0's `get_erasure_scope` lists every dataset holding a subject
+type together with its `retention` tag, and the example reported `null` for
+both `fraud/transactions_scored` and `policy/claims_deduped` — the ontology
+defines the key, but neither descriptor used it.
+
+`transactions_scored.yml` now carries `retention: 7y` and `claims_ingest.yml`
+carries `retention: 10y`. The two values differ on purpose, which is one more
+field differing between the published pair, and [part 1](https://cordata.tech/en/blog/pipelines-as-descriptors)
+changed in step — both descriptors are quoted there byte for byte, whitespace
+and comments included, and the post's own "four fields differ" sentence is now
+five.
+
 ## 0.2.10 — 2026-11-14
 
 **An output a writer replaced now says so, with the standard
