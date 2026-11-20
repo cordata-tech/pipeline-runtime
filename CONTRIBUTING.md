@@ -2,7 +2,8 @@
 
 Issues and pull requests are welcome. This page is mostly about scope, because
 the fastest way to waste your afternoon here is to send something good that
-does not belong.
+does not belong. If you work with a coding agent, point it at
+[AGENTS.md](AGENTS.md), the short form of this page.
 
 ## What this repo is for
 
@@ -62,16 +63,42 @@ python3.12 -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/python -m tools.seed
 ./.venv/bin/python -m pytest
 ./.venv/bin/ruff check . && ./.venv/bin/ruff format --check .
+./.venv/bin/codespell
 ```
 
 CI runs exactly those. `test_post_conformance.py` skips in CI, because it needs
-the site repository, which is private.
+the site repository, which is private. `pre-commit install` (once) runs ruff
+and codespell, at the versions CI uses, before each commit.
 
 ## How a change gets in
 
 Fork, branch, open a pull request. That is the only route — `main` takes no
 direct pushes from anyone but the maintainer — and it needs no special access,
-so there is nothing to ask for before you start.
+so there is nothing to ask for before you start. A merge needs CI to pass and
+an approving review from a code owner, given after the last push.
+`.github/CODEOWNERS` requests that review automatically, and lists separately
+the paths where a change is easy to make and expensive to get wrong — the
+articles' code, the example descriptors, the schemas, the release workflow. A
+pull request touching one of those is worth a sentence in its description
+about which commitment it keeps.
+
+**Coding agents are welcome.** Saying that one helped is welcome too, though
+not required: a line in the pull request on what it did and what you checked
+yourself tells a reviewer where to look harder, and a commit trailer such as
+`Assisted-by: <tool>` or `Co-Authored-By:` is fine. Whoever opens the pull
+request is responsible for every line in it, whatever wrote it, and has read
+every one.
+
+## Sign-off (DCO)
+
+**Sign off every commit** with `git commit -s`, which adds a `Signed-off-by:`
+line. It certifies, under the [Developer Certificate of
+Origin](https://developercertificate.org), that you wrote the change or
+otherwise have the right to submit it under this project's **MIT** licence.
+The DCO check fails a pull request with a commit whose sign-off does not match
+its author; `git rebase --signoff main` adds the missing ones. Signing and
+signing off are different things: the signature below proves who made the
+commit, the sign-off is what they certify about it.
 
 ## Commits, and the one bit of friction
 

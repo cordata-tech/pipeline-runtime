@@ -1,0 +1,77 @@
+name: Bug report
+description: A pipeline ran, emitted lineage, or was rejected, in a way that disagrees with the published articles or the code
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. A failing test for a claim that does not hold is worth more than a
+        fix — it says precisely which sentence is wrong. See
+        [docs/post-corrections.md](../../docs/post-corrections.md) for the gaps already
+        known about.
+
+        **Descriptors and lineage can be sensitive.** Share the smallest descriptor and
+        event set that shows the problem, and rename anything you would not publish. A
+        security problem goes to a private advisory instead — see SECURITY.md.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of problem
+      options:
+        - A claim in one of the two articles does not hold against this code
+        - A run produced the wrong lineage event, or omitted one
+        - A pipeline was accepted or rejected that should not have been
+        - A crash, or an error message that did not say what to do
+        - Something else
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: cordata-pipeline-runtime version
+      description: The output of `pip show cordata-pipeline-runtime`.
+      placeholder: "0.2.11"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: The command you ran
+      description: Paths may be shortened; keep every option.
+      render: shell
+      placeholder: python -m pipeline_runtime example/domains/fraud/pipelines/transactions_scored.yml
+    validations:
+      required: true
+
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened, and what you expected instead
+      description: The output, or the part of the emitted lineage that is wrong, and what it should have said.
+    validations:
+      required: true
+
+  - type: textarea
+    id: descriptor
+    attributes:
+      label: The descriptor, or the smallest one that shows it
+      description: Optional, and the fastest route to a fix. Redacted is fine.
+      render: yaml
+
+  - type: input
+    id: environment
+    attributes:
+      label: Python and operating system
+      placeholder: Python 3.13 on macOS 15
+
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Did a coding agent help find or write this up? (optional)
+      description: Welcome either way; it tells us how to read the report.
+      options:
+        - "No"
+        - "Yes"

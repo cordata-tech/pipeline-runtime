@@ -383,7 +383,7 @@ def dataset(
 
     The namespace is the domain rather than the storage account: under
     account-per-domain the same physical bucket can be reached by several
-    identities, and lineage that keyed on the reacher would split one dataset
+    identities, and lineage that keyed on the reader would split one dataset
     into several. The domain is the thing that stays the same — provided it is
     the domain that owns the table, so the caller passes the owner's for an
     input, not its own.

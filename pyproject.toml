@@ -38,7 +38,10 @@ run = [
     "openlineage-python>=1.20",
 ]
 test = ["cordata-pipeline-runtime[run]", "pytest>=8"]
-dev = ["cordata-pipeline-runtime[run]", "pytest>=8", "ruff>=0.6"]
+# Pinned exactly, unlike everything else here. A ruff release changes which
+# rule is default-on, and CI and a contributor's pre-commit hook must agree on
+# a file or the two argue about who is wrong.
+dev = ["cordata-pipeline-runtime[run]", "pytest>=8", "ruff==0.17.2", "codespell==2.4.3"]
 
 [project.scripts]
 pipeline-runtime = "pipeline_runtime.__main__:main"
@@ -68,6 +71,12 @@ packages = ["pipeline_runtime", "pipeline_runtime.backends", "pipeline_runtime.e
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.codespell]
+# Run by CI and the pre-commit hook. tests/fixtures/published/ is extracted
+# from the published articles and stays as they wrote it; the rest are
+# generated or binary, not prose.
+skip = "./.venv,./.git,./.jj,./build,./dist,./tests/fixtures,*.json,*.ndjson,*.duckdb,*.parquet"
 
 [tool.ruff]
 line-length = 100
