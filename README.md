@@ -250,6 +250,15 @@ part 1 § 2 rule 3 applied to the runtime itself.
 | `OPENLINEAGE_CONFIG` | — | path to an `openlineage.yml` resolving a transport the way dbt-ol and Airflow do — `composite`, `http`, `kafka`, a bucket `file` |
 | `OPENLINEAGE_URL` | — | an HTTP collector, without a config file |
 
+`[run]` installs `openlineage-python` bare, which is enough for `http` and a
+local `file` child, including inside a `composite`. A transport reading or
+writing `s3://`, `gs://` or `abfs://` needs `fsspec` plus the matching
+library (`s3fs`, `gcsfs`, `adlfs`); `kafka` needs `confluent-kafka`. Neither
+is installed here — this project's own dependencies stay to what the
+quickstart needs — so install `openlineage-python[fsspec]` (and `s3fs` etc.)
+or `openlineage-python[kafka]` yourself alongside `cordata-pipeline-runtime[run]`
+before pointing `OPENLINEAGE_CONFIG` at one.
+
 ## Installing it as a dependency
 
 ```
