@@ -747,3 +747,75 @@ def test_openlineage_config_reaches_every_transport_in_it(env, monkeypatch, tmp_
     for target in (a, b):
         events = [json.loads(line) for line in target.read_text().splitlines() if line.strip()]
         assert any(e["eventType"] == "COMPLETE" for e in events), target
+
+
+def test_an_orchestrators_task_is_named_as_parent(emitted, monkeypatch):
+    """#19 acceptance 1: `OPENLINEAGE_PARENT_ID`, the way Airflow's
+    `lineage_parent_id` and `dbt-ol` both pass it, names the launching task so
+    it is not left as an activity with no purpose or legal basis beside this
+    run's own jobs (cordata-tech/qedro#8)."""
+    monkeypatch.setenv(
+        "OPENLINEAGE_PARENT_ID", "acme-airflow/acme_daily.fraud_pipelines/" + str(uuid.uuid4())
+    )
+    terminal = emitted()[0]
+    parent = terminal["run"]["facets"]["parent"]
+    assert parent["job"]["namespace"] == "acme-airflow"
+    assert parent["job"]["name"] == "acme_daily.fraud_pipelines"
+    assert "root" not in parent, (
+        "the proposed approach only sets root when OPENLINEAGE_ROOT_PARENT_ID is"
+    )
+
+
+def test_the_root_parent_is_named_separately_when_it_differs(emitted, monkeypatch):
+    """#19: a task nested several orchestration levels deep names its direct
+    launcher and the run at the top of that chain separately."""
+    task_run, root_run = str(uuid.uuid4()), str(uuid.uuid4())
+    monkeypatch.setenv(
+        "OPENLINEAGE_PARENT_ID", f"acme-airflow/acme_daily.fraud_pipelines/{task_run}"
+    )
+    monkeypatch.setenv("OPENLINEAGE_ROOT_PARENT_ID", f"acme-airflow/acme_daily/{root_run}")
+    parent = emitted()[0]["run"]["facets"]["parent"]
+    assert parent["run"]["runId"] == task_run
+    assert parent["root"]["run"]["runId"] == root_run
+    assert parent["root"]["job"]["name"] == "acme_daily"
+
+
+def test_the_validate_event_still_names_only_its_own_pipeline(emitted, monkeypatch):
+    """#19's one subtlety: the `.validate` job is already related to its
+    pipeline's run by sharing its run id — an orchestrator's task is not what
+    that relationship names, so it must not gain the `parent` facet too."""
+    monkeypatch.setenv(
+        "OPENLINEAGE_PARENT_ID", f"acme-airflow/acme_daily.fraud_pipelines/{uuid.uuid4()}"
+    )
+    validate = emitted()[1]
+    assert "parent" not in validate["run"].get("facets", {})
+
+
+def test_a_run_that_named_no_launcher_names_no_parent(emitted):
+    """#19 acceptance 2, the absent case: nothing resembling a `parent` facet
+    appears unless `OPENLINEAGE_PARENT_ID` is set."""
+    assert "parent" not in emitted()[0]["run"]["facets"]
+
+
+def test_a_malformed_parent_id_is_refused_naming_the_shape(env, monkeypatch):
+    """#19 acceptance 2: a value that cannot be `{namespace}/{job}/{run_id}`
+    stops the run rather than being silently left unparented, the way
+    `dbt-ol` itself would — this is this run's own lineage, not dbt's."""
+    from pipeline_runtime.errors import MalformedParentId
+
+    monkeypatch.setenv("OPENLINEAGE_PARENT_ID", "acme-airflow/not-enough-parts")
+    with pytest.raises(MalformedParentId, match="OPENLINEAGE_PARENT_ID"):
+        run(FRAUD, str(uuid.uuid4()))
+
+
+def test_a_parent_id_whose_run_is_not_a_uuid_is_also_refused(env, monkeypatch):
+    """#19: the shape check alone would accept three slash-separated fields
+    with garbage in the run id slot; `Run.runId` is a UUID in every other
+    event this project emits, and this one is no exception."""
+    from pipeline_runtime.errors import MalformedParentId
+
+    monkeypatch.setenv(
+        "OPENLINEAGE_PARENT_ID", "acme-airflow/acme_daily.fraud_pipelines/not-a-uuid"
+    )
+    with pytest.raises(MalformedParentId, match="UUID"):
+        run(FRAUD, str(uuid.uuid4()))

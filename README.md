@@ -249,6 +249,8 @@ part 1 § 2 rule 3 applied to the runtime itself.
 | `CORDATA_LINEAGE_OUT` | `out/lineage.ndjson` | where events are written, when neither variable below is set |
 | `OPENLINEAGE_CONFIG` | — | path to an `openlineage.yml` resolving a transport the way dbt-ol and Airflow do — `composite`, `http`, `kafka`, a bucket `file` |
 | `OPENLINEAGE_URL` | — | an HTTP collector, without a config file |
+| `OPENLINEAGE_PARENT_ID` | — | `{namespace}/{job}/{run_id}` naming the task that launched this run, the way Airflow's `lineage_parent_id` and `dbt-ol` both pass it |
+| `OPENLINEAGE_ROOT_PARENT_ID` | — | the same shape, for the run at the top of the orchestration chain, when it differs from the immediate parent |
 
 `[run]` installs `openlineage-python` bare, which is enough for `http` and a
 local `file` child, including inside a `composite`. A transport reading or

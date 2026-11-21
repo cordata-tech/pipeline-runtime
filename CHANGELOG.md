@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.13 — 2026-11-21
+
+**A run now names the task that launched it, when the orchestrator says so**
+(#19). In [qedro-lab](https://github.com/cordata-tech/qedro-lab), an Airflow
+task running `pipeline-runtime demo` showed up in the Art. 30 record as an
+activity with no purpose or legal basis, beside the jobs pipeline-runtime
+itself emitted, because nothing linked the two.
+
+With `OPENLINEAGE_PARENT_ID` set — `{namespace}/{job}/{run_id}`, the shape
+`dbt-ol` reads and Airflow's provider writes through `lineage_parent_id` — a
+pipeline's terminal event now carries the standard `parent` run facet naming
+it, with `OPENLINEAGE_ROOT_PARENT_ID` naming the root of the chain when it
+differs. A `.validate` event keeps naming only its own pipeline, as before. A
+value that cannot be parsed, or whose `run_id` is not a UUID, raises
+`MalformedParentId` rather than running unparented. Unset, nothing changes.
+
+The same change is cordata-tech/art30-emit#1; qedro-lab#5 will pass the
+values once both land.
+
 ## 0.2.12 — 2026-11-21
 
 **`OPENLINEAGE_CONFIG` and `OPENLINEAGE_URL` are now honoured** (#17).

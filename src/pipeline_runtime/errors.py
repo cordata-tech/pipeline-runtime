@@ -59,3 +59,12 @@ class UnknownKind(PipelineError):
 
     def __init__(self, registry: str, kind: str, known: list[str]) -> None:
         super().__init__(f"{registry}: no implementation for kind {kind!r}; have {known}")
+
+
+class MalformedParentId(PipelineError):
+    """`OPENLINEAGE_PARENT_ID` or `OPENLINEAGE_ROOT_PARENT_ID` did not parse (#19)."""
+
+    def __init__(self, variable: str, found: str) -> None:
+        super().__init__(
+            f"{variable}={found!r} is not '{{namespace}}/{{job}}/{{run_id}}' with run_id a UUID"
+        )

@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
+from uuid import UUID
 
 import attr
 from openlineage.client import OpenLineageClient
@@ -39,6 +40,7 @@ from openlineage.client.facet_v2 import (
     RunFacet,
     error_message_run,
     lifecycle_state_change_dataset,
+    parent_run,
     schema_dataset,
     source_code_location_job,
 )
@@ -48,7 +50,7 @@ from openlineage.client.transport.file import FileConfig, FileTransport
 from . import __version__
 from .catalog import Publication
 from .descriptor import Descriptor, TableRef, quarantined
-from .errors import PipelineError
+from .errors import MalformedParentId, PipelineError
 from .expectations import Validation
 
 # Becomes the producer on every event; the client supplies schemaURL.
@@ -83,6 +85,53 @@ def _client() -> OpenLineageClient:
     # visible: several events, one runId, in the order they were produced.
     return OpenLineageClient(
         transport=FileTransport(FileConfig(log_file_path=str(target), append=True))
+    )
+
+
+def _parent_id(variable: str) -> tuple[str, str, str] | None:
+    """Parse `{namespace}/{job}/{run_id}`, the shape `dbt-ol` and Airflow's
+    provider both read and write (#19). `None` when the variable is unset;
+    a `MalformedParentId` when it is set and does not fit the shape.
+    """
+    raw = os.environ.get(variable)
+    if not raw:
+        return None
+    parts = raw.split("/")
+    if len(parts) != 3:
+        raise MalformedParentId(variable, raw)
+    namespace, name, run_id = parts
+    try:
+        UUID(run_id)
+    except ValueError:
+        raise MalformedParentId(variable, raw) from None
+    return namespace, name, run_id
+
+
+def parent_facet() -> parent_run.ParentRunFacet | None:
+    """The task that launched this run, when the orchestrator said so.
+
+    `OPENLINEAGE_PARENT_ID` is how `dbt-ol` learns the same thing from
+    Airflow, so a reader there (`lineage_parent_id`, `lineage_root_parent_id`)
+    is already producing it. Without it, a run names no parent — this process
+    was the one that started, not one an orchestrator launched.
+    """
+    parent = _parent_id("OPENLINEAGE_PARENT_ID")
+    if parent is None:
+        return None
+    namespace, name, run_id = parent
+
+    root = None
+    if (found := _parent_id("OPENLINEAGE_ROOT_PARENT_ID")) is not None:
+        root_namespace, root_name, root_run_id = found
+        root = parent_run.Root(
+            run=parent_run.RootRun(runId=root_run_id),
+            job=parent_run.RootJob(namespace=root_namespace, name=root_name),
+        )
+
+    return parent_run.ParentRunFacet(
+        run=parent_run.Run(runId=run_id),
+        job=parent_run.Job(namespace=namespace, name=name),
+        root=root,
     )
 
 
@@ -480,6 +529,12 @@ def emit(
         run_facets["errorMessage"] = error_message_run.ErrorMessageRunFacet(
             message=str(error), programmingLanguage="python"
         )
+    # The launching task, when one named itself (#19). Only on this event: the
+    # `.validate` event below already names its parent by sharing this run's
+    # id and this job's name, and that relationship is not what this variable
+    # describes.
+    if (parent := parent_facet()) is not None:
+        run_facets["parent"] = parent
 
     job_facets: dict[str, JobFacet] = {
         "processing": ProcessingJobFacet(
