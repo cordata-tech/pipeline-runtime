@@ -692,3 +692,58 @@ def test_datasets_report_the_shape_the_run_actually_saw(emitted):
     produced = {f["name"] for f in event["outputs"][0]["facets"]["schema"]["fields"]}
     assert "fraud_score" in produced, "the column the pipeline exists to produce"
     assert "status" not in produced, "filtered out by the first step, so not in the output"
+
+
+def test_without_openlineage_config_the_cordata_variable_still_decides(env):
+    """#17 acceptance 2: with neither `OPENLINEAGE_CONFIG` nor `OPENLINEAGE_URL`
+    set, `_client()` must keep building the file transport itself — passing no
+    `transport` here would hand resolution to `OpenLineageClient`, which falls
+    back to a console transport rather than `CORDATA_LINEAGE_OUT`."""
+    from openlineage.client.transport.file import FileTransport
+
+    from pipeline_runtime.emit import _client
+
+    assert isinstance(_client().transport, FileTransport)
+
+
+def test_openlineage_url_alone_is_also_honoured(env, monkeypatch):
+    """#17: the issue names `OPENLINEAGE_CONFIG` *or* `OPENLINEAGE_URL` as the
+    trigger — this guards the second half of that `or` on its own, since the
+    composite-config test below cannot catch a regression that drops it."""
+    from openlineage.client.transport.http import HttpTransport
+
+    from pipeline_runtime.emit import _client
+
+    monkeypatch.setenv("OPENLINEAGE_URL", "http://localhost:9999")
+    assert isinstance(_client().transport, HttpTransport)
+
+
+def test_openlineage_config_reaches_every_transport_in_it(env, monkeypatch, tmp_path):
+    """#17 acceptance 1: a composite transport configured through
+    `OPENLINEAGE_CONFIG` — the way dbt-ol and Airflow configure one, and what
+    qedro-lab's shared emitter needs (cordata-tech/qedro-lab#4) — gets one
+    run's events in every child transport, not only `CORDATA_LINEAGE_OUT`."""
+    import yaml
+
+    a, b = tmp_path / "a.ndjson", tmp_path / "b.ndjson"
+    config = tmp_path / "openlineage.yml"
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "transport": {
+                    "type": "composite",
+                    "transports": [
+                        {"type": "file", "log_file_path": str(a), "append": True},
+                        {"type": "file", "log_file_path": str(b), "append": True},
+                    ],
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("OPENLINEAGE_CONFIG", str(config))
+
+    run(FRAUD, str(uuid.uuid4()))
+
+    for target in (a, b):
+        events = [json.loads(line) for line in target.read_text().splitlines() if line.strip()]
+        assert any(e["eventType"] == "COMPLETE" for e in events), target

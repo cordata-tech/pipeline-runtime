@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.12 — 2026-11-21
+
+**`OPENLINEAGE_CONFIG` and `OPENLINEAGE_URL` are now honoured** (#17).
+`_client()` always built a `FileTransport` pointed at `CORDATA_LINEAGE_OUT`,
+so a user who already sends lineage to Marquez, Kafka or a bucket — and
+[qedro-lab](https://github.com/cordata-tech/qedro-lab), whose emitters share
+one composite transport (qedro-lab#4) — could not point pipeline-runtime
+there without a code change.
+
+With either variable set, `_client()` now passes no `transport` at all and
+lets `OpenLineageClient` resolve one itself, the way `dbt-ol` and Airflow do.
+Without either, nothing changes: events still land at `CORDATA_LINEAGE_OUT`.
+
 ## 0.2.11 — 2026-11-17
 
 **Both customer example descriptors carry a `retention` tag** (#16).

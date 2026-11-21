@@ -246,7 +246,9 @@ part 1 § 2 rule 3 applied to the runtime itself.
 | `CORDATA_CATALOG` | `example/catalog.duckdb` | the metastore |
 | `CORDATA_WAREHOUSE` | `example/warehouse` | where `s3://…` locations land |
 | `CORDATA_ONTOLOGY` | `example/ontology.json` | the LF-tag vocabulary |
-| `CORDATA_LINEAGE_OUT` | `out/lineage.ndjson` | where events are written |
+| `CORDATA_LINEAGE_OUT` | `out/lineage.ndjson` | where events are written, when neither variable below is set |
+| `OPENLINEAGE_CONFIG` | — | path to an `openlineage.yml` resolving a transport the way dbt-ol and Airflow do — `composite`, `http`, `kafka`, a bucket `file` |
+| `OPENLINEAGE_URL` | — | an HTTP collector, without a config file |
 
 ## Installing it as a dependency
 

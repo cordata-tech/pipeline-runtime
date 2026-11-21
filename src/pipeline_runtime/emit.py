@@ -64,12 +64,18 @@ STATE = {
 def _client() -> OpenLineageClient:
     """Where events go is deployment configuration, not pipeline configuration.
 
-    A file by default so a clean clone can read what it emitted. In a deployment
-    this is the HTTP transport pointed at the adapter from part 2 § 2, or
-    `AmazonDataZoneTransport`, which the client ships. Both are reachable by
-    configuration alone:
+    `OPENLINEAGE_CONFIG` or `OPENLINEAGE_URL` means the user already points
+    other emitters (dbt-ol, Airflow, qedro-lab's own) somewhere — Marquez, a
+    composite of several transports, Kafka, a bucket. Passing no `transport`
+    lets `OpenLineageClient` resolve one itself, the way those emitters do:
     https://openlineage.io/docs/client/python/configuration/
+
+    Without either, a file is the only place events can go, so a clean clone
+    can read what it emitted without any configuration at all.
     """
+    if os.environ.get("OPENLINEAGE_CONFIG") or os.environ.get("OPENLINEAGE_URL"):
+        return OpenLineageClient()
+
     target = Path(os.environ.get("CORDATA_LINEAGE_OUT", "out/lineage.ndjson"))
     target.parent.mkdir(parents=True, exist_ok=True)
     # append=True gives one newline-delimited log rather than a timestamped file
